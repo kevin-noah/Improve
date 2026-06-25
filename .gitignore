@@ -1,0 +1,10 @@
+# Artefacts de compilation LaTeX
+TP/.build/
+*.aux
+*.log
+*.out
+*.toc
+# Divers
+.DS_Store
+__pycache__/
+*.pyc

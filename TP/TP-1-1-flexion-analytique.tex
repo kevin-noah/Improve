@@ -1,0 +1,220 @@
+\documentclass[11pt]{article}
+\input{_preamble}
+\begin{document}
+
+\tptitre{1}{1.1}{Flexion d'une poutre : la vérité-terrain analytique}{2 h 30}
+
+\noindent Avant de simuler quoi que ce soit --- et \emph{a fortiori} avant de laisser une IA prédire
+à ta place --- il faut une référence dont tu es certain. Ce TP construit cette référence : la
+solution analytique d'une poutre en flexion. C'est ta \textbf{vérité-terrain} pour tout le reste
+du parcours.
+
+\begin{objectifs}
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item Maîtriser la théorie des poutres d'\textbf{Euler-Bernoulli} : flèche, moment, contrainte.
+  \item Énoncer ses \textbf{hypothèses} et donc son \textbf{domaine de validité}.
+  \item Retrouver à la main la flèche en bout et la contrainte maximale d'une poutre encastrée.
+  \item Vérifier ton calcul par un petit script Python.
+  \item Découvrir, dès maintenant, l'idée centrale du parcours : \emph{un modèle a un domaine
+        au-delà duquel il ment} (ici, Euler-Bernoulli vs poutres courtes).
+\end{itemize}
+\end{objectifs}
+
+\begin{prereq}
+\textbf{Connaissances} : aire, moment quadratique, contrainte normale ($\sigma=F/A$).\\
+\textbf{Logiciel} : Python 3 avec \texttt{numpy} (déjà installé). Aucun solveur EF ici --- que de
+l'analytique.\\
+\textbf{Temps} : $\approx$ 2 h 30. Fais les parties dans l'ordre.
+\end{prereq}
+
+\section{Contexte : pourquoi cette poutre est stratégique}
+Chez CAE comme dans tout calcul de structure, la question n'est jamais \og{}quel est le résultat ?\fg{}
+mais \og{}\emph{ai-je le droit de croire ce résultat ?}\fg{}. La poutre encastrée chargée en bout
+(\emph{cantilever}) est le cas-école parfait : sa solution exacte est connue, donc elle te servira
+de juge pour tes futurs solveurs EF et tes futurs modèles ML. Si ton code --- ou une IA --- ne
+reproduit pas ce cas, tu sais qu'il a tort.
+
+\section{Rappel théorique}
+
+\begin{rappel}[: théorie d'Euler-Bernoulli]
+Pour une poutre élancée en flexion, on relie la \textbf{flèche} $w(x)$ au \textbf{moment
+fléchissant} $M(x)$ par :
+\[
+EI\,\frac{d^2 w}{dx^2} = M(x),
+\]
+où $E$ est le module d'Young (Pa) et $I$ le moment quadratique de la section (m\textsuperscript{4}).
+La \textbf{contrainte normale} de flexion à une fibre située à la distance $y$ de l'axe neutre :
+\[
+\boxed{\;\sigma(x,y) = \frac{M(x)\,y}{I}\;}
+\]
+La contrainte est maximale là où $|M|$ est maximal et à la fibre la plus éloignée $y=c$ (peau).
+\end{rappel}
+
+\subsection{Hypothèses (= le domaine de validité)}
+Euler-Bernoulli suppose : (i) petites déformations, (ii) matériau élastique linéaire,
+(iii) sections planes restant planes et \emph{perpendiculaires} à la fibre neutre --- donc
+\textbf{cisaillement transverse négligé}. Cette dernière hypothèse n'est valable que pour une
+poutre \textbf{élancée} : élancement $L/h \gtrsim 10$. En dessous, il faut le modèle de
+\textbf{Timoshenko} (qui ajoute le cisaillement) --- sinon Euler-Bernoulli \emph{sous-estime} la
+flèche.
+
+\begin{pont}
+Retiens cette phrase, c'est tout ton futur métier : \textbf{\og{}Euler-Bernoulli devient faux quand
+la poutre est trop courte.\fg{}} C'est exactement la même logique qu'un \emph{surrogate model} qui
+ment hors de son domaine d'entraînement (TP 1.5). Un modèle analytique a un domaine ; un modèle ML
+aussi. Savoir le tracer, c'est ta valeur ajoutée face à l'IA.
+\end{pont}
+
+\subsection{Section rectangulaire}
+Pour une section rectangulaire de largeur $b$ et hauteur $h$ :
+\[
+I = \frac{b\,h^3}{12}, \qquad c = \frac{h}{2}.
+\]
+
+\section{Cas d'étude}
+Poutre encastrée à gauche (\emph{cantilever}), longueur $L$, chargée par une force ponctuelle $P$
+vers le bas à l'extrémité libre.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{l l l}
+\toprule
+Grandeur & Symbole & Valeur \\
+\midrule
+Longueur & $L$ & $1{,}20$ m \\
+Largeur de section & $b$ & $30$ mm \\
+Hauteur de section & $h$ & $60$ mm \\
+Module d'Young (alu 6061) & $E$ & $69$ GPa \\
+Force en bout & $P$ & $800$ N \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Pour ce chargement, les résultats classiques (à \textbf{démontrer puis appliquer}) sont :
+\[
+M_{\max} = P L \ \text{(à l'encastrement)}, \qquad
+w_{\text{bout}} = \frac{P L^3}{3 E I}, \qquad
+\sigma_{\max} = \frac{P L \, (h/2)}{I}.
+\]
+
+\section{Partie A --- Calcul à la main}
+
+\begin{exercice}[moment quadratique]
+Calcule $I = \dfrac{b h^3}{12}$ pour la section donnée. \textbf{Attention aux unités} : convertis
+$b$ et $h$ en mètres avant de calculer. Donne $I$ en m\textsuperscript{4}.
+\end{exercice}
+
+\begin{exercice}[moment et contrainte maximale]
+\begin{enumerate}[leftmargin=1.4em,nosep]
+  \item Donne $M_{\max}=PL$ en N$\cdot$m, et explique \emph{où} il agit sur la poutre.
+  \item Calcule $\sigma_{\max}=\dfrac{M_{\max}\,(h/2)}{I}$ en MPa.
+  \item La limite d'élasticité de l'alu 6061-T6 est $\approx 240$ MPa. La poutre reste-t-elle
+        dans le domaine élastique (hypothèse (ii)) ? Conclus.
+\end{enumerate}
+\end{exercice}
+
+\begin{exercice}[flèche en bout]
+Calcule $w_{\text{bout}} = \dfrac{P L^3}{3 E I}$ en mm. Cette flèche te paraît-elle \og{}petite\fg{}
+devant $L$ ? (Vérifie l'hypothèse (i) des petites déformations : $w_{\text{bout}} \ll L$.)
+\end{exercice}
+
+\begin{exercice}[le domaine de validité, à la main]
+Calcule l'élancement $L/h$ du cas d'étude. Es-tu dans le domaine d'Euler-Bernoulli
+($L/h \gtrsim 10$) ? \\
+Maintenant imagine une poutre \emph{trapue} : même section mais $L = 0{,}25$ m. Recalcule $L/h$.
+Que devrais-tu utiliser à la place d'Euler-Bernoulli, et la flèche réelle serait-elle
+\emph{plus grande} ou \emph{plus petite} que celle prédite par Euler-Bernoulli ?
+\end{exercice}
+
+\section{Partie B --- Vérification numérique en Python}
+Complète le squelette suivant (remplace les \texttt{\#\,TODO}). Le but n'est pas de \og{}coder un
+solveur\fg{} mais de \emph{vérifier} tes calculs de la Partie A et d'automatiser l'analyse d'unités.
+
+\begin{lstlisting}
+import numpy as np
+
+# --- Donnees du cas d'etude (unites SI) ---
+L = 1.20            # m
+b = 30e-3           # m
+h = 60e-3           # m
+E = 69e9            # Pa
+P = 800.0           # N
+sigma_limite = 240e6  # Pa (limite elastique alu 6061-T6)
+
+# --- TODO 1 : moment quadratique I = b*h^3/12 ---
+I = ...
+
+# --- TODO 2 : moment max, contrainte max, fleche en bout ---
+M_max = ...
+sigma_max = ...
+w_bout = ...
+
+# --- Affichage ---
+print(f"I        = {I:.3e} m^4")
+print(f"M_max    = {M_max:.1f} N.m")
+print(f"sigma_max= {sigma_max/1e6:.1f} MPa")
+print(f"w_bout   = {w_bout*1000:.2f} mm")
+
+# --- TODO 3 : marge de securite et verification des hypotheses ---
+marge = sigma_limite / sigma_max          # > 1 => OK elastique
+elancement = L / h
+print(f"marge securite = {marge:.2f}")
+print(f"elancement L/h = {elancement:.1f}  -> Euler-Bernoulli valide ? {elancement >= 10}")
+\end{lstlisting}
+
+\begin{exercice}[confrontation]
+Lance le script. Les valeurs Python collent-elles à ton calcul à la main (Partie A) à mieux que
+1~\% ? Si non, où est l'erreur --- dans le calcul main ou dans une conversion d'unités ?
+\end{exercice}
+
+\begin{exercice}[balayage du domaine]
+Modifie le script pour calculer $w_{\text{bout}}$ et $L/h$ pour $L \in \{0{,}2; 0{,}4; 0{,}8;
+1{,}2; 1{,}6\}$ m (boucle \texttt{for}). Trace mentalement (ou avec \texttt{matplotlib}) la
+frontière $L/h = 10$ : pour quelles longueurs Euler-Bernoulli devient-il douteux ? Tu viens de
+tracer ton premier \textbf{domaine de validité}.
+\end{exercice}
+
+\begin{piege}
+L'erreur n°1 des débutants : mélanger mm et m. $I$ varie comme $h^3$ : un facteur 1000 sur $h$
+devient $10^9$ sur $I$. \textbf{Convertis tout en SI dès la première ligne}, jamais à la fin.
+\end{piege}
+
+\section{Partie C --- Synthèse}
+\begin{exercice}[note d'ingénieur]
+Rédige 5 lignes maximum répondant à : \og{}La poutre tient-elle ? À quelle condition ai-je le droit
+de croire ce calcul ?\fg{} Mentionne explicitement la marge de sécurité \emph{et} le domaine de
+validité (élancement, élasticité, petites déformations).
+\end{exercice}
+
+\begin{livrable}
+\begin{enumerate}[leftmargin=1.4em,nosep]
+  \item Tes calculs à la main des exercices 1 à 4 (photo/scan ou recopie propre).
+  \item Le script Python complété et son affichage.
+  \item La \og{}note d'ingénieur\fg{} de l'exercice 7 (5 lignes).
+  \item Une phrase : \emph{en quoi cette poutre va-t-elle servir de juge à mon futur solveur EF ?}
+\end{enumerate}
+\end{livrable}
+
+\section{Auto-évaluation}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{>{\raggedright\arraybackslash}p{10.5cm} c}
+\toprule
+Critère & Acquis ? \\
+\midrule
+J'énonce les 3 hypothèses d'Euler-Bernoulli & $\square$ \\
+Je sais dire quand le modèle devient faux (poutre courte $\to$ Timoshenko) & $\square$ \\
+J'ai retrouvé $I$, $\sigma_{\max}$ et $w_{\text{bout}}$ à la main & $\square$ \\
+Mon script reproduit ces valeurs à $<1\%$ & $\square$ \\
+Je comprends le parallèle \og{}domaine d'un modèle analytique = domaine d'un surrogate\fg{} & $\square$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vfill
+\begin{center}\small\itshape
+Prochain TP : \textbf{1.2 --- Premier solveur EF 1D (barre en traction)} : on passe de la formule
+exacte à la \emph{méthode} qui marche sur n'importe quelle géométrie.
+\end{center}
+
+\end{document}

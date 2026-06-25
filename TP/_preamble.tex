@@ -1,0 +1,75 @@
+% _preamble.tex --- style commun à tous les TP du parcours "Improve"
+% Compilé avec tectonic. Inclus via \input{_preamble} avant \begin{document}.
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage[a4paper,margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=teal!70!black}
+
+% ---- Palette ----
+\definecolor{accent}{HTML}{1F4E79}   % bleu aéro
+\definecolor{soft}{HTML}{EAF0F7}
+\definecolor{ok}{HTML}{2E7D32}
+\definecolor{warn}{HTML}{B26A00}
+\definecolor{codebg}{HTML}{F5F5F5}
+
+% ---- En-tête / pied ----
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[L]{\small\color{accent}\textbf{Improve} --- Parcours simulation + IA}
+\fancyhead[R]{\small\thepage}
+\fancyfoot[C]{\small\itshape Profil hybride mécanique + IA (cible CAE)}
+
+% ---- Titres de section ----
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\bfseries\color{accent!85!black}}{\thesubsection.}{0.5em}{}
+
+% ---- Code Python ----
+\lstdefinestyle{py}{
+  language=Python, basicstyle=\ttfamily\small, backgroundcolor=\color{codebg},
+  keywordstyle=\color{accent}\bfseries, commentstyle=\color{ok!70!black}\itshape,
+  stringstyle=\color{warn}, numbers=left, numberstyle=\tiny\color{gray},
+  showstringspaces=false, breaklines=true, frame=single, framerule=0.3pt,
+  rulecolor=\color{gray!40}, xleftmargin=1.4em, columns=fullflexible,
+  literate={é}{{\'e}}1 {è}{{\`e}}1 {à}{{\`a}}1 {ê}{{\^e}}1 {ô}{{\^o}}1 {î}{{\^i}}1 {ç}{{\c c}}1 {É}{{\'E}}1
+}
+\lstset{style=py}
+
+% ---- Boîtes pédagogiques ----
+\newtcolorbox{objectifs}{colback=accent!6,colframe=accent,coltitle=white,
+  title=\textbf{Objectifs du TP},fonttitle=\bfseries,boxrule=0.8pt,arc=2pt,left=2mm,right=2mm}
+\newtcolorbox{prereq}{colback=soft,colframe=accent!60,title=\textbf{Prérequis \& matériel},
+  fonttitle=\bfseries,coltitle=accent,boxrule=0.5pt,arc=2pt}
+\newtcolorbox{rappel}[1][]{colback=gray!4,colframe=gray!55,title=\textbf{Rappel théorique #1},
+  fonttitle=\bfseries,coltitle=black,boxrule=0.5pt,arc=2pt}
+\newtcolorbox{livrable}{colback=ok!6,colframe=ok,title=\textbf{Livrables attendus},
+  fonttitle=\bfseries,coltitle=white,boxrule=0.7pt,arc=2pt}
+\newtcolorbox{piege}{colback=warn!8,colframe=warn,title=\textbf{Piège à éviter},
+  fonttitle=\bfseries,coltitle=white,boxrule=0.7pt,arc=2pt}
+\newtcolorbox{pont}{colback=teal!6,colframe=teal!70!black,title=\textbf{Le pont vers l'IA},
+  fonttitle=\bfseries,coltitle=white,boxrule=0.7pt,arc=2pt}
+
+% ---- Compteur d'exercices ----
+\newcounter{exo}[section]
+\newtcolorbox{exercice}[1][]{colback=white,colframe=accent!75,
+  title=\textbf{Exercice \refstepcounter{exo}\theexo}\ \ {\normalfont\itshape #1},
+  fonttitle=\bfseries,coltitle=white,boxrule=0.6pt,arc=1pt,breakable}
+
+% ---- Bandeau de titre du TP ----
+\newcommand{\tptitre}[4]{% #1=etage #2=numero #3=titre #4=duree
+  \noindent\begin{tcolorbox}[colback=accent,colframe=accent,arc=3pt,boxrule=0pt]
+  \color{white}\small ÉTAGE #1 --- TP #2 \hfill Durée estimée : #4\\[2pt]
+  {\LARGE\bfseries #3}
+  \end{tcolorbox}\vspace{4pt}}
