@@ -1,220 +1,221 @@
-\documentclass[11pt]{article}
+\documentclass[10pt,journal]{IEEEtran}
 \input{_preamble}
+
 \begin{document}
 
-\tptitre{1}{1.1}{Flexion d'une poutre : la vérité-terrain analytique}{2 h 30}
+\title{Flexion d'une poutre encastrée : la solution analytique d'Euler--Bernoulli comme vérité-terrain pour la simulation et l'apprentissage automatique}
 
-\noindent Avant de simuler quoi que ce soit --- et \emph{a fortiori} avant de laisser une IA prédire
-à ta place --- il faut une référence dont tu es certain. Ce TP construit cette référence : la
-solution analytique d'une poutre en flexion. C'est ta \textbf{vérité-terrain} pour tout le reste
-du parcours.
+\author{Prénom~Nom%
+\thanks{Profil hybride mécanique + IA --- Parcours Simulation + IA, Étage~1, TP~1.1. Courriel~: prenom.nom@exemple.org}}
 
-\begin{objectifs}
-\begin{itemize}[leftmargin=1.4em,nosep]
-  \item Maîtriser la théorie des poutres d'\textbf{Euler-Bernoulli} : flèche, moment, contrainte.
-  \item Énoncer ses \textbf{hypothèses} et donc son \textbf{domaine de validité}.
-  \item Retrouver à la main la flèche en bout et la contrainte maximale d'une poutre encastrée.
-  \item Vérifier ton calcul par un petit script Python.
-  \item Découvrir, dès maintenant, l'idée centrale du parcours : \emph{un modèle a un domaine
-        au-delà duquel il ment} (ici, Euler-Bernoulli vs poutres courtes).
-\end{itemize}
-\end{objectifs}
+\markboth{\improvejournal}{Nom \MakeLowercase{\textit{et~al.}}: Flexion d'une poutre encastrée --- vérité-terrain analytique}
 
-\begin{prereq}
-\textbf{Connaissances} : aire, moment quadratique, contrainte normale ($\sigma=F/A$).\\
-\textbf{Logiciel} : Python 3 avec \texttt{numpy} (déjà installé). Aucun solveur EF ici --- que de
-l'analytique.\\
-\textbf{Temps} : $\approx$ 2 h 30. Fais les parties dans l'ordre.
-\end{prereq}
+\maketitle
 
-\section{Contexte : pourquoi cette poutre est stratégique}
-Chez CAE comme dans tout calcul de structure, la question n'est jamais \og{}quel est le résultat ?\fg{}
-mais \og{}\emph{ai-je le droit de croire ce résultat ?}\fg{}. La poutre encastrée chargée en bout
-(\emph{cantilever}) est le cas-école parfait : sa solution exacte est connue, donc elle te servira
-de juge pour tes futurs solveurs EF et tes futurs modèles ML. Si ton code --- ou une IA --- ne
-reproduit pas ce cas, tu sais qu'il a tort.
+\begin{abstract}
+Avant de simuler une structure --- et \emph{a fortiori} avant de confier une prédiction à un modèle d'apprentissage automatique --- il faut disposer d'une référence certaine. Cet article construit cette référence pour le cas-école de la poutre encastrée chargée en bout : la solution analytique d'Euler--Bernoulli. On rappelle la théorie (flèche, moment, contrainte), on en explicite les trois hypothèses et donc le domaine de validité (élancement $L/h \gtrsim 10$), puis on applique le modèle à une poutre en aluminium 6061. Les grandeurs caractéristiques --- moment quadratique, contrainte maximale, flèche en bout et marge de sécurité --- sont retrouvées à la main puis vérifiées numériquement à mieux que 1~\%. On montre enfin qu'un modèle analytique, comme un modèle de substitution, possède un domaine au-delà duquel il ment : savoir tracer cette frontière est la valeur ajoutée de l'ingénieur.
+\end{abstract}
 
-\section{Rappel théorique}
+\begin{IEEEkeywords}
+Théorie des poutres, Euler--Bernoulli, flexion, domaine de validité, élancement, vérité-terrain, modèle de substitution, vérification numérique.
+\end{IEEEkeywords}
 
-\begin{rappel}[: théorie d'Euler-Bernoulli]
-Pour une poutre élancée en flexion, on relie la \textbf{flèche} $w(x)$ au \textbf{moment
-fléchissant} $M(x)$ par :
-\[
+\IEEEpeerreviewmaketitle
+
+\section{Introduction}
+\IEEEPARstart{D}{ans} tout bureau d'études en mécanique des structures, la question pertinente n'est jamais \og quel est le résultat ?\fg{} mais \og ai-je le droit de croire ce résultat ?\fg{}. La poutre encastrée chargée à son extrémité libre (\emph{cantilever}) est le cas-école idéal pour y répondre : sa solution exacte est connue en forme close, elle peut donc servir de juge à tout solveur par éléments finis (EF) ou à tout modèle de données construit par la suite. Si un code --- ou une intelligence artificielle --- ne reproduit pas ce cas, on sait qu'il a tort.
+
+Cet article poursuit une double ambition : (i) établir la vérité-terrain analytique de ce cas, et (ii) introduire l'idée centrale d'un \emph{domaine de validité} --- un modèle, qu'il soit analytique ou appris, cesse d'être fiable hors de son domaine. Cette idée, triviale sur une poutre, est exactement celle qui gouverne la fiabilité d'un modèle de substitution en simulation pilotée par les données~\cite{forrester}.
+
+\section{Théorie d'Euler--Bernoulli}
+\subsection{Relation flèche--moment et contrainte}
+Pour une poutre élancée en flexion, la théorie d'Euler--Bernoulli relie la flèche $w(x)$ au moment fléchissant $M(x)$ par~\cite{gere}
+\begin{equation}
 EI\,\frac{d^2 w}{dx^2} = M(x),
-\]
-où $E$ est le module d'Young (Pa) et $I$ le moment quadratique de la section (m\textsuperscript{4}).
-La \textbf{contrainte normale} de flexion à une fibre située à la distance $y$ de l'axe neutre :
-\[
-\boxed{\;\sigma(x,y) = \frac{M(x)\,y}{I}\;}
-\]
-La contrainte est maximale là où $|M|$ est maximal et à la fibre la plus éloignée $y=c$ (peau).
-\end{rappel}
-
-\subsection{Hypothèses (= le domaine de validité)}
-Euler-Bernoulli suppose : (i) petites déformations, (ii) matériau élastique linéaire,
-(iii) sections planes restant planes et \emph{perpendiculaires} à la fibre neutre --- donc
-\textbf{cisaillement transverse négligé}. Cette dernière hypothèse n'est valable que pour une
-poutre \textbf{élancée} : élancement $L/h \gtrsim 10$. En dessous, il faut le modèle de
-\textbf{Timoshenko} (qui ajoute le cisaillement) --- sinon Euler-Bernoulli \emph{sous-estime} la
-flèche.
-
-\begin{pont}
-Retiens cette phrase, c'est tout ton futur métier : \textbf{\og{}Euler-Bernoulli devient faux quand
-la poutre est trop courte.\fg{}} C'est exactement la même logique qu'un \emph{surrogate model} qui
-ment hors de son domaine d'entraînement (TP 1.5). Un modèle analytique a un domaine ; un modèle ML
-aussi. Savoir le tracer, c'est ta valeur ajoutée face à l'IA.
-\end{pont}
-
-\subsection{Section rectangulaire}
-Pour une section rectangulaire de largeur $b$ et hauteur $h$ :
-\[
+\end{equation}
+où $E$ est le module d'Young (Pa) et $I$ le moment quadratique de la section (m$^4$). La contrainte normale de flexion à une fibre située à la distance $y$ de l'axe neutre vaut
+\begin{equation}
+\sigma(x,y) = \frac{M(x)\,y}{I},
+\end{equation}
+maximale là où $|M|$ est maximal et à la fibre la plus éloignée, $y=c$ (la \og peau\fg{} de la poutre). Pour une section rectangulaire de largeur $b$ et de hauteur $h$,
+\begin{equation}
 I = \frac{b\,h^3}{12}, \qquad c = \frac{h}{2}.
-\]
+\end{equation}
+
+\subsection{Hypothèses et domaine de validité}
+Euler--Bernoulli repose sur trois hypothèses : (i) petites déformations ; (ii) matériau élastique linéaire ; (iii) sections planes restant planes et perpendiculaires à la fibre neutre --- le cisaillement transverse est donc négligé. Cette troisième hypothèse n'est valable que pour une poutre élancée, soit un élancement $L/h \gtrsim 10$. En deçà, il faut le modèle de Timoshenko, qui réintroduit le cisaillement~\cite{timoshenko_shear} ; sinon Euler--Bernoulli sous-estime la flèche.
+
+\subsection{Analogie avec les modèles de substitution}
+On retiendra une formulation : \og Euler--Bernoulli devient faux quand la poutre est trop courte.\fg{} C'est la logique exacte d'un modèle de substitution (\emph{surrogate}) qui ment hors de son domaine d'entraînement : un modèle analytique a un domaine, un modèle appris aussi. Savoir tracer cette frontière constitue la compétence-clé de l'ingénieur face à l'automatisation~\cite{forrester}.
 
 \section{Cas d'étude}
-Poutre encastrée à gauche (\emph{cantilever}), longueur $L$, chargée par une force ponctuelle $P$
-vers le bas à l'extrémité libre.
+On considère une poutre encastrée à gauche, de longueur $L$, chargée par une force ponctuelle $P$ dirigée vers le bas à son extrémité libre (Fig.~\ref{fig:poutre}). La section est rectangulaire (largeur $b$, hauteur $h$). Les paramètres numériques, représentatifs d'un profilé en aluminium 6061, sont rassemblés au Tableau~\ref{tab:param}.
 
-\begin{center}
-\renewcommand{\arraystretch}{1.2}
-\begin{tabular}{l l l}
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}[>=Latex,scale=1.0]
+  % mur encastrement
+  \fill[pattern=north east lines] (-0.25,-0.55) rectangle (0,0.55);
+  \draw[thick] (0,-0.55) -- (0,0.55);
+  % poutre
+  \draw[thick,fill=black!4] (0,-0.18) rectangle (5.0,0.18);
+  % deformee
+  \draw[red,dashed,thick] (0,0) .. controls (3.0,-0.05) and (4.2,-0.45) .. (5.0,-0.75);
+  % charge P
+  \draw[->,very thick] (5.0,0.9) -- (5.0,0.05);
+  \node[right] at (5.05,0.6) {$P=800$~N};
+  % cote L
+  \draw[<->] (0,-0.95) -- (5.0,-0.95);
+  \node[below] at (2.5,-0.95) {$L=1{,}20$~m};
+  % coupe A-A
+  \draw[dashed] (2.5,0.25) -- (2.5,0.75);
+  \node[above] at (2.5,0.75) {\footnotesize A--A};
+  % encart section
+  \begin{scope}[shift={(6.1,-0.1)},scale=0.9]
+    \draw[thick,fill=black!4] (0,-0.5) rectangle (0.7,0.5);
+    \draw[dash dot] (-0.15,0) -- (0.85,0); \node[left] at (-0.15,0) {\footnotesize axe};
+    \draw[<->] (0,-0.65) -- (0.7,-0.65); \node[below] at (0.35,-0.65) {\footnotesize $b$};
+    \draw[<->] (0.85,-0.5) -- (0.85,0.5); \node[right] at (0.85,0) {\footnotesize $h$};
+    \fill (0.35,0.5) circle (0.7pt); \node[above right] at (0.35,0.5) {\footnotesize $c$};
+  \end{scope}
+\end{tikzpicture}
+\caption{Poutre encastrée (\emph{cantilever}) chargée en bout ; en pointillés rouges, la déformée. L'encart A--A montre la section rectangulaire, son axe neutre et la fibre extrême $y=c$.}
+\label{fig:poutre}
+\end{figure}
+
+\begin{table}[!t]
+\caption{Paramètres du cas d'étude}
+\label{tab:param}
+\centering
+\begin{tabular}{@{}lll@{}}
 \toprule
 Grandeur & Symbole & Valeur \\
 \midrule
-Longueur & $L$ & $1{,}20$ m \\
-Largeur de section & $b$ & $30$ mm \\
-Hauteur de section & $h$ & $60$ mm \\
-Module d'Young (alu 6061) & $E$ & $69$ GPa \\
-Force en bout & $P$ & $800$ N \\
+Longueur & $L$ & 1,20 m \\
+Largeur de section & $b$ & 30 mm \\
+Hauteur de section & $h$ & 60 mm \\
+Module d'Young (alu 6061) & $E$ & 69 GPa \\
+Force en bout & $P$ & 800 N \\
+Limite d'élasticité (6061-T6) & $\sigma_e$ & 240 MPa \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
-Pour ce chargement, les résultats classiques (à \textbf{démontrer puis appliquer}) sont :
-\[
-M_{\max} = P L \ \text{(à l'encastrement)}, \qquad
-w_{\text{bout}} = \frac{P L^3}{3 E I}, \qquad
-\sigma_{\max} = \frac{P L \, (h/2)}{I}.
-\]
+\section{Résultats analytiques}
+Pour le cantilever chargé en bout, les résultats classiques de la résistance des matériaux~\cite{gere} s'écrivent
+\begin{align}
+M_{\max} &= P L, \\
+w_{\text{bout}} &= \frac{P L^3}{3 EI}, \\
+\sigma_{\max} &= \frac{P L\,(h/2)}{I}.
+\end{align}
+L'application numérique donne $I = 5{,}40\times 10^{-7}$~m$^4$, $M_{\max}=960$~N$\cdot$m à l'encastrement, et $\sigma_{\max}=53{,}3$~MPa. La marge de sécurité vis-à-vis de la limite élastique vaut $\sigma_e/\sigma_{\max}=4{,}5$ : la poutre reste largement dans le domaine élastique, l'hypothèse (ii) est satisfaite. La flèche en bout est $w_{\text{bout}}=12{,}4$~mm, soit $w_{\text{bout}}/L \approx 1{,}0\;\% \ll 1$ ; l'hypothèse de petites déformations (i) est vérifiée. Enfin l'élancement $L/h=20\ge 10$ place le cas dans le domaine d'Euler--Bernoulli (hypothèse iii). Le Tableau~\ref{tab:res} récapitule.
 
-\section{Partie A --- Calcul à la main}
+\begin{table}[!t]
+\caption{Grandeurs calculées}
+\label{tab:res}
+\centering
+\begin{tabular}{@{}llc@{}}
+\toprule
+Grandeur & Valeur & Hypothèse \\
+\midrule
+$I$ & $5{,}40\times10^{-7}$ m$^4$ & --- \\
+$M_{\max}$ & 960 N$\cdot$m & --- \\
+$\sigma_{\max}$ & 53,3 MPa & (ii) \\
+Marge $\sigma_e/\sigma_{\max}$ & 4,5 & (ii) \\
+$w_{\text{bout}}$ & 12,4 mm & (i) \\
+$w_{\text{bout}}/L$ & 1,0 \% & (i) \\
+$L/h$ & 20 & (iii) \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{exercice}[moment quadratique]
-Calcule $I = \dfrac{b h^3}{12}$ pour la section donnée. \textbf{Attention aux unités} : convertis
-$b$ et $h$ en mètres avant de calculer. Donne $I$ en m\textsuperscript{4}.
-\end{exercice}
+\section{Vérification numérique}
+La partie analytique est confrontée à un court script Python (\texttt{numpy}) dont le rôle n'est pas de \og coder un solveur\fg{} mais de vérifier les calculs et d'automatiser l'analyse dimensionnelle (Listing~\ref{lst:py}). Les valeurs produites coïncident avec le calcul à la main à mieux que 1~\%. Le piège classique du débutant consiste à mélanger millimètres et mètres : comme $I \propto h^3$, un facteur $10^3$ sur $h$ devient $10^9$ sur $I$. La règle est de convertir en unités SI dès la première ligne, jamais à la fin.
 
-\begin{exercice}[moment et contrainte maximale]
-\begin{enumerate}[leftmargin=1.4em,nosep]
-  \item Donne $M_{\max}=PL$ en N$\cdot$m, et explique \emph{où} il agit sur la poutre.
-  \item Calcule $\sigma_{\max}=\dfrac{M_{\max}\,(h/2)}{I}$ en MPa.
-  \item La limite d'élasticité de l'alu 6061-T6 est $\approx 240$ MPa. La poutre reste-t-elle
-        dans le domaine élastique (hypothèse (ii)) ? Conclus.
-\end{enumerate}
-\end{exercice}
-
-\begin{exercice}[flèche en bout]
-Calcule $w_{\text{bout}} = \dfrac{P L^3}{3 E I}$ en mm. Cette flèche te paraît-elle \og{}petite\fg{}
-devant $L$ ? (Vérifie l'hypothèse (i) des petites déformations : $w_{\text{bout}} \ll L$.)
-\end{exercice}
-
-\begin{exercice}[le domaine de validité, à la main]
-Calcule l'élancement $L/h$ du cas d'étude. Es-tu dans le domaine d'Euler-Bernoulli
-($L/h \gtrsim 10$) ? \\
-Maintenant imagine une poutre \emph{trapue} : même section mais $L = 0{,}25$ m. Recalcule $L/h$.
-Que devrais-tu utiliser à la place d'Euler-Bernoulli, et la flèche réelle serait-elle
-\emph{plus grande} ou \emph{plus petite} que celle prédite par Euler-Bernoulli ?
-\end{exercice}
-
-\section{Partie B --- Vérification numérique en Python}
-Complète le squelette suivant (remplace les \texttt{\#\,TODO}). Le but n'est pas de \og{}coder un
-solveur\fg{} mais de \emph{vérifier} tes calculs de la Partie A et d'automatiser l'analyse d'unités.
-
-\begin{lstlisting}
+\begin{lstlisting}[caption={Vérification analytique en Python / numpy. La conversion SI est faite dès la déclaration des données.},label={lst:py},float=!t]
 import numpy as np
-
-# --- Donnees du cas d'etude (unites SI) ---
-L = 1.20            # m
-b = 30e-3           # m
-h = 60e-3           # m
-E = 69e9            # Pa
-P = 800.0           # N
-sigma_limite = 240e6  # Pa (limite elastique alu 6061-T6)
-
-# --- TODO 1 : moment quadratique I = b*h^3/12 ---
-I = ...
-
-# --- TODO 2 : moment max, contrainte max, fleche en bout ---
-M_max = ...
-sigma_max = ...
-w_bout = ...
-
-# --- Affichage ---
-print(f"I        = {I:.3e} m^4")
-print(f"M_max    = {M_max:.1f} N.m")
-print(f"sigma_max= {sigma_max/1e6:.1f} MPa")
-print(f"w_bout   = {w_bout*1000:.2f} mm")
-
-# --- TODO 3 : marge de securite et verification des hypotheses ---
-marge = sigma_limite / sigma_max          # > 1 => OK elastique
-elancement = L / h
-print(f"marge securite = {marge:.2f}")
-print(f"elancement L/h = {elancement:.1f}  -> Euler-Bernoulli valide ? {elancement >= 10}")
+# Donnees (unites SI)
+L, b, h = 1.20, 30e-3, 60e-3
+E, P = 69e9, 800.0
+sig_e = 240e6
+# Grandeurs derivees
+I = b*h**3/12
+M_max = P*L
+sig_max = M_max*(h/2)/I
+w_bout = P*L**3/(3*E*I)
+marge = sig_e/sig_max
+elanc = L/h
+print(f"I     = {I:.3e} m^4")
+print(f"M_max = {M_max:.1f} N.m")
+print(f"sigma = {sig_max/1e6:.1f} MPa")
+print(f"w     = {w_bout*1e3:.2f} mm")
+print(f"marge = {marge:.2f}")
+print(f"L/h   = {elanc:.1f} EB? {elanc>=10}")
 \end{lstlisting}
 
-\begin{exercice}[confrontation]
-Lance le script. Les valeurs Python collent-elles à ton calcul à la main (Partie A) à mieux que
-1~\% ? Si non, où est l'erreur --- dans le calcul main ou dans une conversion d'unités ?
-\end{exercice}
+\section{Domaine de validité}
+Pour matérialiser la frontière du modèle, on balaie la longueur $L \in \{0{,}2;\,0{,}4;\,0{,}8;\,1{,}2;\,1{,}6\}$~m à section constante, et l'on trace la flèche en bout $w_{\text{bout}}=7{,}16\,L^3$~(mm) ainsi que la frontière d'élancement $L/h=10$ (Fig.~\ref{fig:domaine}). Cette condition correspond ici à $L=0{,}60$~m : en deçà, Euler--Bernoulli devient douteux et la flèche réelle, sous-estimée, exigerait le modèle de Timoshenko ; au-delà, la prédiction est fiable. Une poutre trapue de $L=0{,}25$~m ($L/h=4{,}2$) tombe nettement hors domaine. On vient de tracer, sur un cas trivial, un premier domaine de validité --- l'exact analogue de la frontière d'un modèle de substitution~\cite{forrester}.
 
-\begin{exercice}[balayage du domaine]
-Modifie le script pour calculer $w_{\text{bout}}$ et $L/h$ pour $L \in \{0{,}2; 0{,}4; 0{,}8;
-1{,}2; 1{,}6\}$ m (boucle \texttt{for}). Trace mentalement (ou avec \texttt{matplotlib}) la
-frontière $L/h = 10$ : pour quelles longueurs Euler-Bernoulli devient-il douteux ? Tu viens de
-tracer ton premier \textbf{domaine de validité}.
-\end{exercice}
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=0.62\columnwidth,
+  xlabel={$L$ (m)}, ylabel={$w_{\text{bout}}$ (mm)},
+  xmin=0, xmax=1.6, ymin=0, ymax=30,
+  ytick={0,10,20,30}, xtick={0,0.4,0.8,1.2,1.6},
+  tick label style={font=\footnotesize}, label style={font=\footnotesize},
+  axis lines=left, clip=false]
+  % zone douteuse
+  \fill[red!8] (axis cs:0,0) rectangle (axis cs:0.6,30);
+  \draw[dashed,red!70!black] (axis cs:0.6,0) -- (axis cs:0.6,30);
+  \node[red!70!black,font=\scriptsize,align=center] at (axis cs:0.3,24) {douteux\\(Timoshenko)};
+  \node[font=\scriptsize] at (axis cs:1.1,4) {$L/h=10$};
+  \node[font=\scriptsize,align=center] at (axis cs:1.15,27) {Euler--Bernoulli\\valide};
+  % courbe
+  \addplot[thick,blue,domain=0:1.6,samples=60]{7.16*x^3};
+  % cas d'etude
+  \addplot[only marks,mark=*,mark size=1.6pt] coordinates {(1.2,12.37)};
+  \node[font=\scriptsize,anchor=west] at (axis cs:1.0,15) {cas d'étude};
+\end{axis}
+\end{tikzpicture}
+\caption{Flèche en bout en fonction de la longueur, à section constante. La frontière $L/h=10$ (pointillés) sépare le domaine fiable d'Euler--Bernoulli de la zone trapue où le modèle de Timoshenko s'impose.}
+\label{fig:domaine}
+\end{figure}
 
-\begin{piege}
-L'erreur n°1 des débutants : mélanger mm et m. $I$ varie comme $h^3$ : un facteur 1000 sur $h$
-devient $10^9$ sur $I$. \textbf{Convertis tout en SI dès la première ligne}, jamais à la fin.
-\end{piege}
+\section{Conclusion}
+La poutre tient : avec une marge de 4,5 sur la limite élastique, une flèche de 1~\% de la portée et un élancement de 20, les trois hypothèses d'Euler--Bernoulli sont satisfaites et le calcul est légitime. Au-delà du résultat, ce cas fournit une vérité-terrain en forme close : tout solveur EF ou modèle appris développé par la suite devra le reproduire à mieux que 1~\% pour être crédité de confiance. Le réflexe à conserver est de toujours accompagner un résultat de son domaine de validité --- la compétence qui distingue l'ingénieur du calcul automatique.
 
-\section{Partie C --- Synthèse}
-\begin{exercice}[note d'ingénieur]
-Rédige 5 lignes maximum répondant à : \og{}La poutre tient-elle ? À quelle condition ai-je le droit
-de croire ce calcul ?\fg{} Mentionne explicitement la marge de sécurité \emph{et} le domaine de
-validité (élancement, élasticité, petites déformations).
-\end{exercice}
+\appendices
+\section*{Annexe --- Exercices guidés}
+Les exercices ci-dessous reprennent la démarche du TP ; ils se traitent à la main puis se vérifient avec le Listing~\ref{lst:py}.
 
-\begin{livrable}
-\begin{enumerate}[leftmargin=1.4em,nosep]
-  \item Tes calculs à la main des exercices 1 à 4 (photo/scan ou recopie propre).
-  \item Le script Python complété et son affichage.
-  \item La \og{}note d'ingénieur\fg{} de l'exercice 7 (5 lignes).
-  \item Une phrase : \emph{en quoi cette poutre va-t-elle servir de juge à mon futur solveur EF ?}
+\subsection{Calcul à la main}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Moment quadratique.} Calculer $I=bh^3/12$ après conversion de $b$ et $h$ en mètres ; donner $I$ en m$^4$.
+\item \emph{Moment et contrainte.} Donner $M_{\max}=PL$ (N$\cdot$m) et son point d'action ; calculer $\sigma_{\max}$ (MPa) ; conclure sur le domaine élastique ($\sigma_e\approx 240$~MPa).
+\item \emph{Flèche en bout.} Calculer $w_{\text{bout}}=PL^3/3EI$ (mm) ; vérifier $w_{\text{bout}}\ll L$.
+\item \emph{Domaine de validité.} Calculer l'élancement $L/h$. Refaire pour $L=0{,}25$~m : quel modèle utiliser, et la flèche réelle est-elle plus grande ou plus petite que celle d'Euler--Bernoulli ?
 \end{enumerate}
-\end{livrable}
 
-\section{Auto-évaluation}
-\begin{center}
-\renewcommand{\arraystretch}{1.25}
-\begin{tabular}{>{\raggedright\arraybackslash}p{10.5cm} c}
-\toprule
-Critère & Acquis ? \\
-\midrule
-J'énonce les 3 hypothèses d'Euler-Bernoulli & $\square$ \\
-Je sais dire quand le modèle devient faux (poutre courte $\to$ Timoshenko) & $\square$ \\
-J'ai retrouvé $I$, $\sigma_{\max}$ et $w_{\text{bout}}$ à la main & $\square$ \\
-Mon script reproduit ces valeurs à $<1\%$ & $\square$ \\
-Je comprends le parallèle \og{}domaine d'un modèle analytique = domaine d'un surrogate\fg{} & $\square$ \\
-\bottomrule
-\end{tabular}
-\end{center}
+\subsection{Vérification numérique}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Confrontation.} Lancer le Listing~\ref{lst:py} : l'accord avec le calcul à la main est-il meilleur que 1~\% ? Sinon, localiser l'erreur (calcul ou conversion d'unités).
+\item \emph{Balayage.} Boucler sur $L\in\{0{,}2;\,0{,}4;\,0{,}8;\,1{,}2;\,1{,}6\}$~m ; situer la frontière $L/h=10$ et reproduire la Fig.~\ref{fig:domaine}.
+\end{enumerate}
 
-\vfill
-\begin{center}\small\itshape
-Prochain TP : \textbf{1.2 --- Premier solveur EF 1D (barre en traction)} : on passe de la formule
-exacte à la \emph{méthode} qui marche sur n'importe quelle géométrie.
-\end{center}
+\subsection{Synthèse}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Note d'ingénieur (5 lignes).} Répondre à : \og La poutre tient-elle ? À quelle condition ai-je le droit de croire ce calcul ?\fg{} en citant explicitement la marge de sécurité et le domaine de validité (élancement, élasticité, petites déformations).
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{timoshenko_hist} S.~P. Timoshenko, \emph{History of Strength of Materials}. New York, NY, USA: McGraw-Hill, 1953.
+\bibitem{gere} J.~M. Gere and B.~J. Goodno, \emph{Mechanics of Materials}, 9th ed. Boston, MA, USA: Cengage, 2018.
+\bibitem{timoshenko_shear} S.~P. Timoshenko, ``On the correction for shear of the differential equation for transverse vibrations of prismatic bars,'' \emph{Philos. Mag.}, vol.~41, no.~245, pp.~744--746, 1921.
+\bibitem{zienkiewicz} O.~C. Zienkiewicz, R.~L. Taylor, and J.~Z. Zhu, \emph{The Finite Element Method: Its Basis and Fundamentals}, 7th ed. Oxford, U.K.: Butterworth-Heinemann, 2013.
+\bibitem{forrester} A.~I.~J. Forrester, A.~Sóbester, and A.~J. Keane, \emph{Engineering Design via Surrogate Modelling}. Chichester, U.K.: Wiley, 2008.
+\bibitem{asm} ASM International, ``Aluminum 6061-T6,'' in \emph{Metals Handbook}, 10th ed. Materials Park, OH, USA: ASM Int., 1990.
+\end{thebibliography}
 
 \end{document}

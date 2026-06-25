@@ -1,95 +1,75 @@
-\documentclass[11pt]{article}
+\documentclass[10pt,journal]{IEEEtran}
 \input{_preamble}
+
 \begin{document}
 
-\tptitre{0}{00}{Syllabus --- Parcours de TP : simulation accélérée par IA}{lecture : 15 min}
+\title{Éditorial --- Guide du parcours de travaux pratiques : simulation accélérée par apprentissage automatique}
 
-\noindent Ce parcours de travaux pratiques te mène, étage par étage, vers le profil visé :
-\emph{modéliser la physique, l'accélérer par apprentissage automatique (ML), et savoir quand le
-modèle décroche du réel} --- le c\oe{}ur du métier chez \textbf{CAE}. Chaque TP est autonome, à faire
-au fur et à mesure, et produit un livrable concret.
+\author{Prénom~Nom%
+\thanks{Profil hybride mécanique + IA --- Parcours Simulation + IA. Document de cadrage (syllabus). Courriel~: prenom.nom@exemple.org}}
 
-\begin{objectifs}
-\begin{itemize}[leftmargin=1.4em,nosep]
-  \item Comprendre la \textbf{logique du parcours} et l'ordre des 4 étages.
-  \item Savoir \textbf{comment travailler} un TP (théorie $\rightarrow$ calcul main $\rightarrow$ code $\rightarrow$ validation).
-  \item Connaître les \textbf{livrables} attendus et la grille d'auto-évaluation.
-\end{itemize}
-\end{objectifs}
+\markboth{\improvejournal}{Nom \MakeLowercase{\textit{et~al.}}: Guide du parcours de travaux pratiques}
 
-\section{Le fil rouge}
-Un seul fil traverse les 4 étages : \textbf{la simulation accélérée par ML + validation physique}.
-Tu ne fais pas \og{}4 sujets séparés\fg{} ; tu fais \emph{une compétence, prouvée 4 fois}, sur des
-domaines physiques de plus en plus larges.
+\maketitle
 
-\begin{center}
-\renewcommand{\arraystretch}{1.35}
-\begin{tabular}{>{\bfseries}c >{\raggedright\arraybackslash}p{4.2cm} >{\raggedright\arraybackslash}p{6.3cm}}
+\begin{abstract}
+Ce document de cadrage présente la logique et l'organisation du parcours de travaux pratiques (TP) menant au profil visé : modéliser la physique, l'accélérer par apprentissage automatique, et savoir quand le modèle décroche du réel --- le c\oe{}ur du métier chez un acteur de la simulation tel que CAE. Le parcours se structure en quatre étages de simulation de complexité croissante, traversés par un fil unique : la simulation accélérée par modèle de substitution et sa validation physique. Chaque TP est autonome, se traite au fur et à mesure et produit un livrable concret.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Syllabus, éléments finis, CFD, dynamique du vol, jumeau numérique, modèle de substitution, validation physique, parcours de formation.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+\section{Fil rouge}
+\IEEEPARstart{U}{n} seul fil traverse les quatre étages : \emph{la simulation accélérée par apprentissage automatique et sa validation physique}. L'objectif n'est pas de couvrir quatre sujets séparés, mais de bâtir \emph{une} compétence, prouvée quatre fois, sur des domaines physiques de plus en plus larges (Tableau~\ref{tab:etages}).
+
+\begin{table}[!t]
+\caption{Les quatre étages de simulation}
+\label{tab:etages}
+\centering
+\begin{tabular}{@{}cll@{}}
 \toprule
-Étage & Domaine & Aboutissement (projet portfolio) \\
+Étage & Domaine & Aboutissement (portfolio) \\
 \midrule
-1 & Structures / FEA & Surrogate d'un solveur EF + validation physique \\
-2 & CFD / aérodynamique & Surrogate remplaçant des heures de calcul fluide \\
-3 & Dynamique du vol / systèmes & Modèle de comportement + détection d'écart modèle/réel \\
-4 & Jumeau numérique & Intégration physique + données capteurs + ML \\
+1 & Structures / EF & Substitut d'un solveur EF + validation \\
+2 & CFD / aérodynamique & Substitut remplaçant des heures de calcul \\
+3 & Dynamique du vol & Modèle de comportement + détection d'écart \\
+4 & Jumeau numérique & Physique + données capteurs + ML \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
-\section{Étage 1 --- Structures / FEA : la liste des TP}
-On commence ici car c'est le prolongement direct de ta conception mécanique, et ça bâtit le
-squelette réutilisé partout ensuite (discrétisation, maillage, solveur, convergence, validation).
+\section{Étage 1 --- Structures / éléments finis}
+On débute ici car c'est le prolongement direct de la conception mécanique, et cela bâtit le squelette réutilisé partout ensuite : discrétisation, maillage, solveur, convergence, validation analytique. La liste des TP figure au Tableau~\ref{tab:tp1}.
 
-\begin{center}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabular}{>{\bfseries}c >{\raggedright\arraybackslash}p{5.5cm} >{\raggedright\arraybackslash}p{6cm}}
+\begin{table}[!t]
+\caption{Travaux pratiques de l'étage 1}
+\label{tab:tp1}
+\centering
+\begin{tabular}{@{}cll@{}}
 \toprule
 TP & Titre & Compétence-clé \\
 \midrule
-1.1 & Flexion d'une poutre : la vérité-terrain analytique & Euler-Bernoulli, domaine de validité d'un modèle \\
-1.2 & Premier solveur EF 1D (barre en traction) & Matrice de rigidité, assemblage, conditions aux limites \\
-1.3 & Solveur EF de poutre + étude de convergence & Maillage, convergence, comparaison à l'analytique \\
-1.4 & Du solveur au \emph{surrogate model} & Échantillonnage, régression, évaluation \textbf{honnête} \\
-1.5 & Quand le surrogate ment : détection hors-domaine & Garde-fou physique (le projet phare, axe 1) \\
+1.1 & Flexion : vérité-terrain analytique & Domaine de validité d'un modèle \\
+1.2 & Solveur EF 1D (barre) & Matrice de rigidité, assemblage \\
+1.3 & Solveur EF poutre + convergence & Maillage, convergence \\
+1.4 & Du solveur au substitut & Régression, évaluation honnête \\
+1.5 & Détection du hors-domaine & Garde-fou physique \\
 \bottomrule
 \end{tabular}
-\end{center}
+\end{table}
 
-\noindent\textit{Les TP des étages 2 à 4 seront produits au fur et à mesure de ta progression.}
+Les TP des étages 2 à 4 sont produits au fur et à mesure de la progression.
 
-\section{Comment travailler un TP}
-Chaque TP suit la même structure, pensée pour ancrer le réflexe d'ingénieur :
-\begin{enumerate}[leftmargin=1.6em]
-  \item \textbf{Rappel théorique} --- les formules et leurs \emph{hypothèses} (donc leurs limites).
-  \item \textbf{Calcul à la main} --- pour comprendre avant de coder. Ne saute jamais cette étape.
-  \item \textbf{Code Python} --- tu complètes un squelette, tu n'attends pas une solution toute faite.
-  \item \textbf{Validation} --- tu compares ta sortie à la vérité-terrain et tu juges l'écart.
-  \item \textbf{Le pont vers l'IA} --- comment cette brique servira au surrogate / à la critique de l'IA.
-\end{enumerate}
+\section{Méthode de travail}
+Chaque TP suit la même structure, pensée pour ancrer le réflexe d'ingénieur : (i) rappel théorique et ses hypothèses (donc ses limites) ; (ii) calcul à la main avant tout code ; (iii) script Python à compléter ; (iv) validation contre la vérité-terrain ; (v) le pont vers l'apprentissage automatique. La tentation de coder immédiatement doit être combattue : la valeur du profil tient à la capacité de \emph{juger} un résultat, ce qui suppose d'avoir fait le calcul à la main au moins une fois. Le code sans la physique est précisément le piège que l'automatisation tend aux ingénieurs.
 
-\begin{piege}
-La tentation sera de coder tout de suite. \textbf{Résiste.} Toute la valeur de ton futur profil
-vient de ta capacité à \emph{juger} un résultat --- ce qui suppose d'avoir fait le calcul à la main
-au moins une fois. Le code sans la physique, c'est exactement le piège que l'IA tend aux ingénieurs.
-\end{piege}
+\section{Critères de réussite}
+À la fin de chaque TP, l'apprenant doit pouvoir : énoncer les hypothèses du modèle et son domaine de validité ; retrouver le résultat analytique à la main ; reproduire ce résultat par le code à mieux que 1~\% ; expliquer l'origine de tout écart ; et relier l'exercice à l'étape de substitution et de critique de l'IA.
 
-\section{Grille d'auto-évaluation (à la fin de chaque TP)}
-\begin{center}
-\renewcommand{\arraystretch}{1.25}
-\begin{tabular}{>{\raggedright\arraybackslash}p{10cm} c}
-\toprule
-Critère & Acquis ? \\
-\midrule
-Je sais énoncer les hypothèses du modèle et donc son domaine de validité & $\square$ \\
-J'ai retrouvé le résultat analytique à la main & $\square$ \\
-Mon code reproduit le résultat analytique (écart $<$ 1 \%) & $\square$ \\
-Je sais expliquer \emph{pourquoi} un écart apparaît & $\square$ \\
-Je vois le lien avec l'étape \og{}surrogate / critique de l'IA\fg{} & $\square$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\vfill
-\begin{center}\small\itshape Prochain document : \textbf{TP 1.1 --- Flexion d'une poutre : la vérité-terrain analytique}.\end{center}
+\section{Conclusion}
+Au terme des quatre étages, l'apprenant ne maîtrise pas \og quatre outils\fg{} mais une compétence transférable unique --- la simulation accélérée par ML et sa validation physique --- qui culmine sur le profil recherché en industrie de la simulation. Le prochain document est le TP~1.1 : \emph{Flexion d'une poutre encastrée}.
 
 \end{document}
