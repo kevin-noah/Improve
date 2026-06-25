@@ -8,3 +8,6 @@ TP/.build/
 .DS_Store
 __pycache__/
 *.pyc
+
+# Config locale Claude Code
+.claude/settings.local.json
