@@ -1,0 +1,290 @@
+\documentclass[10pt,journal]{IEEEtran}
+\input{_preamble}
+
+\begin{document}
+
+\title{Premier solveur par éléments finis : l'élément barre en traction--compression, de la matrice de rigidité à l'assemblage}
+
+\author{Prénom~Nom%
+\thanks{Profil hybride mécanique + IA --- Parcours Simulation + IA, Étage~1, TP~1.2. Courriel~: prenom.nom@exemple.org}}
+
+\markboth{\improvejournal}{Nom \MakeLowercase{\textit{et~al.}}: Premier solveur par éléments finis --- l'élément barre}
+
+\maketitle
+
+\begin{abstract}
+Cet article construit le premier solveur par éléments finis (EF) du parcours, sur l'élément le plus simple qui existe : la barre à deux n\oe{}uds en traction--compression. On établit la matrice de rigidité élémentaire à partir de la loi de Hooke, on formalise l'assemblage du système global $\mathbf{K}\mathbf{u}=\mathbf{F}$ et l'imposition des conditions aux limites, puis on applique la méthode à une barre à deux tronçons en aluminium 6061 chargée en bout. Le système $3\times 3$ est résolu à la main --- déplacements, contraintes, réaction --- puis vérifié par un script Python/\texttt{numpy} à mieux que 1~\%, et confronté à la solution exacte du continu, que l'élément reproduit ici sans aucune erreur. Ce résultat n'est pas un hasard : il ne vaut que parce que la solution vraie appartient à l'espace d'approximation de l'élément. Sur une barre conique, cette condition tombe et l'erreur croît avec l'effilement : on trace ainsi le domaine de validité du maillage --- l'analogue exact du domaine d'entraînement d'un modèle de substitution.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Éléments finis, élément barre, matrice de rigidité, assemblage, conditions aux limites, espace d'approximation, erreur de discrétisation, modèle de substitution.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+\section{Introduction}
+\IEEEPARstart{L}{e} TP~1.1 a établi une vérité-terrain analytique et son domaine de validité. Mais la plupart des structures réelles n'admettent pas de solution en forme close : il faut discrétiser. La méthode des éléments finis remplace le continu par un nombre fini d'inconnues nodales reliées par une matrice de rigidité ; toute la simulation de structures --- et une bonne part de la CFD de l'étage~2 --- repose sur ce geste~\cite{zienkiewicz}.
+
+On le pose ici dans son cas le plus dépouillé, la barre en traction--compression : un seul degré de liberté par n\oe{}ud, une matrice $2\times 2$ par élément, un assemblage qui tient sur une demi-page. Ce dénuement est voulu. Il rend chaque nombre vérifiable à la main, donc chaque ligne du futur code \emph{jugeable} --- le réflexe que ce parcours cherche à ancrer. L'article suit la démarche canonique~\cite{logan} : rigidité élémentaire, assemblage, conditions aux limites, résolution, post-traitement ; puis il interroge, comme toujours, le domaine dans lequel ce modèle a le droit d'être cru.
+
+\section{Théorie de l'élément barre}
+\subsection{De la loi de Hooke à la rigidité élémentaire}
+Une barre ne travaille qu'axialement : l'inconnue est le déplacement $u(x)$ le long de l'axe, et l'équilibre du continu s'écrit, pour une rigidité de section $EA$ et une charge répartie axiale $q(x)$~\cite{gere},
+\begin{equation}
+\frac{d}{dx}\!\left(EA\,\frac{du}{dx}\right) + q(x) = 0 .
+\label{eq:ode}
+\end{equation}
+L'élément fini découpe la barre en tronçons de longueur $L_e$ bornés par deux n\oe{}uds $i$ et $j$, et \emph{postule} qu'entre eux $u(x)$ varie linéairement. La déformation y est alors constante, $\varepsilon = (u_j-u_i)/L_e$, et la loi de Hooke donne l'effort normal
+\begin{equation}
+N = EA\,\varepsilon = \frac{EA}{L_e}\,(u_j-u_i), \qquad \sigma = \frac{N}{A}.
+\label{eq:hooke}
+\end{equation}
+L'élément se comporte donc comme un ressort de raideur $k_e = EA/L_e$. L'équilibre de ses deux n\oe{}uds ($f_i = -N$, $f_j = +N$) se met sous forme matricielle :
+\begin{equation}
+\underbrace{\frac{EA}{L_e}
+\begin{bmatrix} 1 & -1 \\ -1 & 1 \end{bmatrix}}_{\mathbf{k}_e}
+\begin{Bmatrix} u_i \\ u_j \end{Bmatrix}
+=
+\begin{Bmatrix} f_i \\ f_j \end{Bmatrix}.
+\label{eq:ke}
+\end{equation}
+La matrice $\mathbf{k}_e$ est symétrique et \emph{singulière} : la somme de ses lignes est nulle, car une translation d'ensemble ($u_i=u_j$) ne produit aucun effort. Ce mode rigide devra être bloqué par les conditions aux limites, sinon le système n'a pas de solution unique.
+
+\subsection{Assemblage et conditions aux limites}
+Quand deux éléments partagent un n\oe{}ud, leurs efforts s'y additionnent : l'assemblage consiste à sommer chaque $\mathbf{k}_e$ dans la matrice globale $\mathbf{K}$, aux lignes et colonnes des degrés de liberté de l'élément. Pour deux éléments en série reliant trois n\oe{}uds,
+\begin{equation}
+\mathbf{K} =
+\begin{bmatrix}
+k_1 & -k_1 & 0 \\
+-k_1 & k_1+k_2 & -k_2 \\
+0 & -k_2 & k_2
+\end{bmatrix},
+\qquad
+\mathbf{K}\,\mathbf{u} = \mathbf{F},
+\label{eq:assemblage}
+\end{equation}
+où $\mathbf{F}$ rassemble les forces nodales appliquées. $\mathbf{K}$ hérite de la symétrie, de la structure bande (un n\oe{}ud ne \og voit\fg{} que ses voisins) et, avant conditions aux limites, de la singularité. L'encastrement $u_1=0$ s'impose en supprimant la ligne et la colonne du degré de liberté bloqué ; on résout le système réduit, puis la ligne supprimée restitue la réaction d'appui :
+\begin{equation}
+R = \left[\mathbf{K}\,\mathbf{u}\right]_1 - F_1 .
+\label{eq:reaction}
+\end{equation}
+La vérification de l'équilibre global, $R + \sum F = 0$, est le premier contrôle de santé de tout calcul EF.
+
+\subsection{Analogie avec les modèles de substitution}
+L'élément fini ne \og calcule\fg{} pas la solution de \eqref{eq:ode} : il la \emph{cherche dans un espace de formes imposées} --- ici, les fonctions linéaires par morceaux. Si la solution vraie appartient à cet espace (barre homogène chargée aux n\oe{}uds : $u$ exactement linéaire par tronçon), le solveur est exact ; sinon il commet une erreur de biais, irréductible tant qu'on ne raffine pas le maillage ou n'enrichit pas la forme. C'est très exactement la situation d'un modèle de substitution (\emph{surrogate}) : lui aussi impose une famille de fonctions (polynômes, processus gaussien, réseau), lui aussi est fiable quand la fonction cible est bien représentée par cette famille sur le domaine couvert, et lui aussi ment au-delà~\cite{forrester}. Retenir le parallèle : \emph{raffiner le maillage} joue le rôle d'\emph{ajouter des données}, et le solveur assemblé ici deviendra, au TP~1.4, la vérité-terrain coûteuse que le substitut apprendra à imiter.
+
+\section{Cas d'étude}
+On considère une barre horizontale encastrée à gauche, composée de deux tronçons de sections différentes ($A_1$ puis $A_2$), soumise à une force de traction $P$ à son extrémité libre (Fig.~\ref{fig:barre}). La discrétisation naturelle compte deux éléments et trois n\oe{}uds, le n\oe{}ud~2 étant placé au changement de section. Les paramètres, représentatifs d'un tirant usiné en aluminium 6061, sont donnés au Tableau~\ref{tab:param}.
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}[>=Latex,scale=1.0]
+  % mur encastrement
+  \fill[pattern=north east lines] (-0.25,-0.6) rectangle (0,0.6);
+  \draw[thick] (0,-0.6) -- (0,0.6);
+  % troncon 1
+  \draw[thick,fill=black!4] (0,-0.32) rectangle (2.6,0.32);
+  % troncon 2
+  \draw[thick,fill=black!4] (2.6,-0.18) rectangle (5.2,0.18);
+  % force P
+  \draw[->,very thick] (5.2,0) -- (6.05,0);
+  \node[above] at (5.65,0.06) {$P=10$~kN};
+  % labels sections
+  \node at (1.3,0.52) {\footnotesize $A_1$};
+  \node at (3.9,0.38) {\footnotesize $A_2$};
+  % cotes
+  \draw[<->] (0,-0.85) -- (2.6,-0.85); \node[below] at (1.3,-0.85) {\footnotesize $L_1=0{,}50$~m};
+  \draw[<->] (2.6,-0.85) -- (5.2,-0.85); \node[below] at (3.9,-0.85) {\footnotesize $L_2=0{,}50$~m};
+  % modele discretise
+  \begin{scope}[shift={(0,-2.15)}]
+    \draw[thick] (0,0) -- (5.2,0);
+    \fill[pattern=north east lines] (-0.3,-0.22) rectangle (-0.06,0.22);
+    \draw[thick] (-0.06,-0.22) -- (-0.06,0.22);
+    \fill (0,0) circle (2pt); \node[below=2pt] at (0,0) {\footnotesize $1$};
+    \fill (2.6,0) circle (2pt); \node[below=2pt] at (2.6,0) {\footnotesize $2$};
+    \fill (5.2,0) circle (2pt); \node[below=2pt] at (5.2,0) {\footnotesize $3$};
+    \node[above] at (1.3,0.04) {\footnotesize élém.~1 $(k_1)$};
+    \node[above] at (3.9,0.04) {\footnotesize élém.~2 $(k_2)$};
+    \draw[->,thick] (5.2,0) ++(0.12,0.28) -- ++(0.6,0); \node[above] at (5.65,0.28) {\footnotesize $P$};
+  \end{scope}
+\end{tikzpicture}
+\caption{Barre à deux tronçons encastrée--libre chargée en bout (haut) et son idéalisation en deux éléments barre et trois n\oe{}uds (bas). Le n\oe{}ud~2 coïncide avec le changement de section.}
+\label{fig:barre}
+\end{figure}
+
+\begin{table}[!t]
+\caption{Paramètres du cas d'étude}
+\label{tab:param}
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Grandeur & Symbole & Valeur \\
+\midrule
+Longueur du tronçon 1 & $L_1$ & 0,50 m \\
+Longueur du tronçon 2 & $L_2$ & 0,50 m \\
+Section du tronçon 1 & $A_1$ & 400 mm$^2$ \\
+Section du tronçon 2 & $A_2$ & 200 mm$^2$ \\
+Module d'Young (alu 6061) & $E$ & 69 GPa \\
+Force en bout & $P$ & 10 kN \\
+Limite d'élasticité (6061-T6) & $\sigma_e$ & 240 MPa \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Résultats}
+\subsection{Résolution à la main}
+Les raideurs élémentaires valent $k_1 = EA_1/L_1 = 55{,}2$~MN/m et $k_2 = EA_2/L_2 = 27{,}6$~MN/m. Avec $u_1 = 0$ et $\mathbf{F} = \{R,\,0,\,P\}^{\mathrm T}$, le système réduit issu de \eqref{eq:assemblage} s'écrit
+\begin{equation}
+\begin{bmatrix} k_1+k_2 & -k_2 \\ -k_2 & k_2 \end{bmatrix}
+\begin{Bmatrix} u_2 \\ u_3 \end{Bmatrix}
+=
+\begin{Bmatrix} 0 \\ P \end{Bmatrix}.
+\label{eq:reduit}
+\end{equation}
+La seconde ligne donne $k_2(u_3-u_2)=P$, la première $k_1 u_2 = k_2(u_3-u_2) = P$ --- traduction matricielle du fait que l'effort normal vaut $P$ partout. D'où
+\begin{align}
+u_2 &= \frac{P}{k_1} = 0{,}181~\text{mm}, \\
+u_3 &= \frac{P}{k_1} + \frac{P}{k_2} = 0{,}543~\text{mm},
+\end{align}
+puis, par \eqref{eq:hooke}, $\sigma_1 = P/A_1 = 25$~MPa et $\sigma_2 = P/A_2 = 50$~MPa. La marge vis-à-vis de la limite élastique, $\sigma_e/\sigma_2 = 4{,}8$, garde le tirant dans le domaine linéaire, et \eqref{eq:reaction} restitue $R = -k_1 u_2 = -10$~kN : l'équilibre global $R+P=0$ est vérifié. Le Tableau~\ref{tab:res} récapitule.
+
+\subsection{Confrontation à la solution exacte du continu}
+L'intégration directe de \eqref{eq:ode} avec $q=0$ et $N=P$ donne la solution exacte
+\begin{equation}
+u(L) = \frac{P}{E}\left(\frac{L_1}{A_1} + \frac{L_2}{A_2}\right) = 0{,}543~\text{mm},
+\label{eq:exact}
+\end{equation}
+identique au résultat EF --- et pas seulement aux n\oe{}uds : $u(x)$ vrai est linéaire par tronçon, donc appartient exactement à l'espace d'approximation des deux éléments. L'erreur de discrétisation est nulle \emph{par construction}, non par précision du calcul. Ce point, anodin en apparence, délimite tout ce que ce solveur promet : dès que la solution vraie sort de l'espace des fonctions linéaires par morceaux, l'exactitude disparaît (Section~\ref{sec:domaine}).
+
+\begin{table}[!t]
+\caption{Grandeurs calculées}
+\label{tab:res}
+\centering
+\begin{tabular}{@{}llc@{}}
+\toprule
+Grandeur & Valeur & Contrôle \\
+\midrule
+$k_1$ & 55,2 MN/m & --- \\
+$k_2$ & 27,6 MN/m & --- \\
+$u_2$ & 0,181 mm & --- \\
+$u_3$ & 0,543 mm & $=$ exact \eqref{eq:exact} \\
+$\sigma_1$ & 25 MPa & élastique \\
+$\sigma_2$ & 50 MPa & élastique \\
+Marge $\sigma_e/\sigma_2$ & 4,8 & --- \\
+$R$ & $-10$ kN & $R+P=0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Vérification numérique}
+Le Listing~\ref{lst:py} fournit le squelette du solveur : rigidité élémentaire, boucle d'assemblage, réduction du système et post-traitement. Les \texttt{TODO} sont à compléter (Annexe) ; une fois le script achevé, ses sorties doivent coïncider avec le Tableau~\ref{tab:res} à mieux que 1~\%. Deux pièges classiques : oublier de \emph{sommer} ($\mathrel{+}=$) les contributions au n\oe{}ud partagé lors de l'assemblage --- l'écraser rend la structure trop souple --- et tenter de résoudre le système complet sans condition limite, où \texttt{numpy} échoue ou renvoie des valeurs absurdes puisque $\mathbf{K}$ est singulière. Ce second échec est instructif : c'est le mode rigide de la Section~II-A vu par l'algèbre linéaire.
+
+\begin{lstlisting}[caption={Squelette du solveur barre en Python / numpy. Completer les TODO puis comparer au Tableau~\ref{tab:res}.},label={lst:py},float=!t]
+import numpy as np
+# Donnees (unites SI)
+E = 69e9
+L1, A1 = 0.50, 400e-6
+L2, A2 = 0.50, 200e-6
+P = 10e3
+
+def k_elem(E, A, L):
+    # TODO: retourner (E*A/L)*[[1,-1],[-1,1]]
+    return np.zeros((2, 2))
+
+# Assemblage : 3 noeuds, 2 elements
+K = np.zeros((3, 3))
+elems = [(A1, L1, (0, 1)), (A2, L2, (1, 2))]
+for A, L, (i, j) in elems:
+    ke = k_elem(E, A, L)
+    # TODO: sommer ke dans K aux ddl (i, j)
+    # K[np.ix_([i,j],[i,j])] += ke
+
+F = np.array([0.0, 0.0, P])
+# Condition limite u1 = 0 : systeme reduit
+u = np.zeros(3)
+# TODO: resoudre K[1:,1:] u[1:] = F[1:]
+# u[1:] = np.linalg.solve(K[1:, 1:], F[1:])
+
+# Post-traitement
+R = K[0, :] @ u - F[0]
+s1 = E*(u[1] - u[0])/L1
+s2 = E*(u[2] - u[1])/L2
+print(f"u2 = {u[1]*1e3:.3f} mm  u3 = {u[2]*1e3:.3f} mm")
+print(f"sig = {s1/1e6:.1f} / {s2/1e6:.1f} MPa")
+print(f"R = {R/1e3:.1f} kN  equilibre: {abs(R+P)<1e-6}")
+\end{lstlisting}
+
+\section{Domaine de validité}
+\label{sec:domaine}
+L'élément barre embarque deux hypothèses : (i) un état de contrainte uniaxial et uniforme sur la section --- discutable tout près du changement de section ou du point d'application de la charge, où le principe de Saint-Venant confine des effets tridimensionnels locaux~\cite{gere} ; (ii) une interpolation linéaire à rigidité $EA$ constante par élément. Pour matérialiser la seconde frontière, on remplace le tronçon étagé par une barre \emph{conique} dont la section décroît linéairement, $A(x) = A_0\,(1-\alpha\,x/L)$, avec $\alpha$ l'effilement. La solution exacte devient logarithmique,
+\begin{equation}
+u(L) = \frac{PL}{EA_0\,\alpha}\,\ln\!\frac{1}{1-\alpha},
+\label{eq:conique}
+\end{equation}
+et ne peut plus être représentée par des segments de droite. Un maillage d'éléments à section constante (prise au milieu de chaque élément) sous-estime alors $u(L)$, d'autant plus que $\alpha$ est grand (Fig.~\ref{fig:domaine}) : avec un seul élément, l'erreur franchit 1~\% dès $\alpha\approx 0{,}3$ et atteint 17~\% à $\alpha=0{,}8$ ; avec quatre éléments elle est divisée par environ seize --- signature de la convergence en $h^2$ que le TP~1.3 étudiera systématiquement~\cite{zienkiewicz}. La lecture \og substitut\fg{} s'impose : le maillage grossier est un modèle hors de son domaine, et la parade --- raffiner là où la physique varie --- est la même que couvrir de données la région où un substitut extrapole~\cite{forrester}.
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=0.66\columnwidth,
+  xlabel={effilement $\alpha$}, ylabel={sous-estimation de $u(L)$ (\%)},
+  xmin=0, xmax=0.95, ymode=log, ymin=0.01, ymax=50,
+  xtick={0,0.2,0.4,0.6,0.8},
+  ytick={0.01,0.1,1,10}, yticklabels={$0{,}01$,$0{,}1$,$1$,$10$},
+  tick label style={font=\footnotesize}, label style={font=\footnotesize},
+  axis lines=left, clip=false]
+  % seuil 1%
+  \draw[dashed,red!70!black] (axis cs:0,1) -- (axis cs:0.95,1);
+  \node[red!70!black,font=\scriptsize,anchor=south west] at (axis cs:0.02,1.05) {seuil $1~\%$};
+  % 1 element
+  \addplot[thick,blue,domain=0.15:0.92,samples=60]
+    {100*(1 - x/((1 - x/2)*(-ln(1-x))))};
+  \node[blue,font=\scriptsize,anchor=west] at (axis cs:0.60,9.5) {$1$ élément};
+  % 4 elements
+  \addplot[thick,black!60,mark=*,mark size=1.4pt] coordinates
+    {(0.2,0.026) (0.5,0.278) (0.8,2.16) (0.9,5.92)};
+  \node[black!60,font=\scriptsize,anchor=north west] at (axis cs:0.58,0.55) {$4$ éléments};
+\end{axis}
+\end{tikzpicture}
+\caption{Barre conique : sous-estimation du déplacement en bout par des éléments à section constante (aire prise au milieu de l'élément), en fonction de l'effilement $\alpha$. Raffiner le maillage repousse la frontière du domaine fiable, sans jamais la supprimer.}
+\label{fig:domaine}
+\end{figure}
+
+\section{Conclusion}
+Le premier solveur EF du parcours tient en trois gestes : une rigidité élémentaire issue de la loi de Hooke, un assemblage qui somme les contributions nodales, des conditions aux limites qui suppriment le mode rigide. Sur la barre étagée, il retrouve la solution exacte du continu --- non par chance, mais parce que la solution vraie habite son espace d'approximation --- et la vérification numérique reproduit le calcul à la main à mieux que 1~\%. Sur la barre conique, il ment de façon quantifiable dès que l'effilement sort l'exactitude de portée : un maillage a un domaine de validité, comme un modèle appris a un domaine d'entraînement. Le TP~1.3 transforme cette observation en méthode --- l'étude de convergence en maillage sur l'élément poutre.
+
+\appendices
+\section*{Annexe --- Exercices guidés}
+Les exercices reprennent la démarche du TP ; les calculs se font à la main puis se vérifient avec le Listing~\ref{lst:py}.
+
+\subsection{Calcul à la main}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Rigidités élémentaires.} Calculer $k_1 = EA_1/L_1$ et $k_2 = EA_2/L_2$ après conversion des sections en m$^2$ ; donner les valeurs en MN/m.
+\item \emph{Assemblage.} Écrire les deux matrices $\mathbf{k}_e$ \eqref{eq:ke} puis assembler $\mathbf{K}$ ($3\times 3$) comme en \eqref{eq:assemblage}. Vérifier que $\mathbf{K}$ est symétrique et que la somme de chaque ligne est nulle ; expliquer ce que cela signifie mécaniquement.
+\item \emph{Résolution.} Imposer $u_1=0$, résoudre le système réduit \eqref{eq:reduit} et retrouver $u_2$, $u_3$, $\sigma_1$, $\sigma_2$ et la marge $\sigma_e/\sigma_2$.
+\item \emph{Réaction.} Restituer $R$ par \eqref{eq:reaction} et vérifier l'équilibre global $R+P=0$. Comparer $u_3$ à la solution exacte \eqref{eq:exact} : pourquoi l'accord est-il \emph{exact} et non simplement bon ?
+\end{enumerate}
+
+\subsection{Vérification numérique}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Complétion.} Compléter les \texttt{TODO} du Listing~\ref{lst:py} et confronter les sorties au Tableau~\ref{tab:res} : l'accord est-il meilleur que 1~\% ? Au passage, tenter de résoudre le système \emph{complet} sans condition limite et interpréter l'échec de \texttt{numpy}.
+\item \emph{Barre conique.} Pour $A(x)=A_0(1-\alpha x/L)$ avec $A_0=400$~mm$^2$, $L=1$~m et $\alpha=0{,}5$, discrétiser en $n\in\{1,2,4,8\}$ éléments (section prise au milieu de chaque élément) et comparer $u(L)$ à \eqref{eq:conique}. Vérifier que l'erreur est divisée par environ quatre quand $n$ double, et situer le seuil de 1~\% de la Fig.~\ref{fig:domaine}.
+\item \emph{Moyenne harmonique.} Reprendre l'exercice précédent en remplaçant la section au milieu par la moyenne harmonique $\bar A = L_e\big/\!\int_e dx/A(x)$ sur chaque élément. Que deviennent les déplacements nodaux, et pourquoi ?
+\end{enumerate}
+
+\subsection{Synthèse}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Note d'ingénieur (5 lignes).} Répondre à : \og Dans quelles conditions ce solveur est-il exact, dans lesquelles est-il seulement approché, et comment le saurais-je sans connaître la solution exacte ?\fg{} en reliant explicitement espace d'approximation, raffinement de maillage et domaine d'entraînement d'un modèle de substitution.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{logan} D.~L. Logan, \emph{A First Course in the Finite Element Method}, 6th ed. Boston, MA, USA: Cengage, 2017.
+\bibitem{zienkiewicz} O.~C. Zienkiewicz, R.~L. Taylor, and J.~Z. Zhu, \emph{The Finite Element Method: Its Basis and Fundamentals}, 7th ed. Oxford, U.K.: Butterworth-Heinemann, 2013.
+\bibitem{gere} J.~M. Gere and B.~J. Goodno, \emph{Mechanics of Materials}, 9th ed. Boston, MA, USA: Cengage, 2018.
+\bibitem{cook} R.~D. Cook, D.~S. Malkus, M.~E. Plesha, and R.~J. Witt, \emph{Concepts and Applications of Finite Element Analysis}, 4th ed. New York, NY, USA: Wiley, 2002.
+\bibitem{hughes} T.~J.~R. Hughes, \emph{The Finite Element Method: Linear Static and Dynamic Finite Element Analysis}. Mineola, NY, USA: Dover, 2000.
+\bibitem{forrester} A.~I.~J. Forrester, A.~Sóbester, and A.~J. Keane, \emph{Engineering Design via Surrogate Modelling}. Chichester, U.K.: Wiley, 2008.
+\end{thebibliography}
+
+\end{document}
