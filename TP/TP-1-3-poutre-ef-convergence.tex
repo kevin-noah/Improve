@@ -1,0 +1,306 @@
+\documentclass[10pt,journal]{IEEEtran}
+\input{_preamble}
+
+\begin{document}
+
+\title{Solveur par éléments finis pour la poutre en flexion : l'élément de Hermite et l'étude de convergence en maillage comme instrument de confiance}
+
+\author{Prénom~Nom%
+\thanks{Profil hybride mécanique + IA --- Parcours Simulation + IA, Étage~1, TP~1.3. Courriel~: prenom.nom@exemple.org}}
+
+\markboth{\improvejournal}{Nom \MakeLowercase{\textit{et~al.}}: Solveur EF poutre et convergence en maillage}
+
+\maketitle
+
+\begin{abstract}
+Cet article franchit le pas de l'élément barre (TP~1.2) à l'élément poutre en flexion et répond à la question qui conditionne toute simulation industrielle : \emph{quel maillage suffit ?} On construit l'élément de Hermite à deux n\oe{}uds --- continuité $C^1$, matrice de rigidité $4\times 4$, vecteur de charges consistant --- puis on l'applique à la poutre encastrée du TP~1.1, cette fois sous charge répartie. Le résultat surprend : les déplacements nodaux sont exacts quel que soit le maillage --- superconvergence propre au cas unidimensionnel --- alors que le moment d'encastrement, donc la contrainte qui dimensionne, est faux de 16,7~\% avec un seul élément. L'étude de convergence rétablit la confiance : l'erreur suit exactement la loi $qh^2/12$, la pente $-2$ du diagramme log--log en est la signature, et l'extrapolation de Richardson restitue la valeur exacte à partir de deux maillages grossiers. On conclut sur la distinction vérification/validation : un calcul parfaitement convergé peut converger vers un modèle faux --- comme un modèle de substitution parfaitement ajusté peut être appris sur les mauvaises données.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Éléments finis, poutre de Hermite, convergence en maillage, taux de convergence, superconvergence, extrapolation de Richardson, vérification et validation, modèle de substitution.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+\section{Introduction}
+\IEEEPARstart{L}{e} TP~1.2 a montré qu'un solveur par éléments finis (EF) cherche la solution dans un espace de formes imposées, et qu'il est exact seulement quand la solution vraie habite cet espace. Dès qu'elle en sort, une erreur de discrétisation apparaît --- et la question pratique devient : \emph{combien d'éléments faut-il pour que cette erreur soit tolérable ?} Dans l'industrie, cette question a un coût direct : mailler trop fin gaspille des heures de calcul (celles-là mêmes qu'un modèle de substitution cherchera à économiser à l'étage suivant), mailler trop grossier produit des contraintes fausses avec l'aplomb d'un tableau de chiffres propres.
+
+Cet article construit l'outil qui répond à la question : \emph{l'étude de convergence en maillage}. Le véhicule est l'élément poutre de Hermite, appliqué au cas encastré du TP~1.1 sous charge répartie --- un cas dont la solution exacte est connue, si bien que l'erreur peut être \emph{mesurée} et non estimée. On y rencontrera un piège instructif : le solveur donne des déplacements nodaux exacts sur n'importe quel maillage, tout en se trompant lourdement sur le moment d'encastrement. Juger un modèle sur la mauvaise grandeur, au mauvais endroit, est une erreur qui ne pardonne ni en EF ni en apprentissage automatique~\cite{oberkampf,forrester}.
+
+\section{Théorie de l'élément poutre}
+\subsection{Interpolation de Hermite et rigidité élémentaire}
+Pour une poutre d'Euler--Bernoulli de rigidité $EI$ portant une charge répartie transversale $q(x)$ (comptée positive dans le sens de la flèche $w$), l'équilibre du continu s'écrit~\cite{gere}
+\begin{equation}
+EI\,\frac{d^4 w}{dx^4} = q(x),
+\label{eq:ode}
+\end{equation}
+et l'énergie de déformation fait intervenir la courbure $w''$. Contrairement à la barre, il ne suffit donc plus que $w$ soit continue entre éléments : sa pente doit l'être aussi (continuité $C^1$), sans quoi l'énergie d'une \og cassure\fg{} serait infinie. Chaque n\oe{}ud porte alors \emph{deux} degrés de liberté, la flèche $w_i$ et la rotation $\theta_i = w'(x_i)$, et l'élément à deux n\oe{}uds interpole $w(x)$ par les quatre polynômes cubiques de Hermite~\cite{logan}. Sur un élément de longueur $L_e$, la démarche du TP~1.2 (énergie, puis équilibre nodal) conduit à la matrice de rigidité
+\begin{equation}
+\mathbf{k}_e = \frac{EI}{L_e^3}
+\begin{bmatrix}
+12 & 6L_e & -12 & 6L_e \\
+6L_e & 4L_e^2 & -6L_e & 2L_e^2 \\
+-12 & -6L_e & 12 & -6L_e \\
+6L_e & 2L_e^2 & -6L_e & 4L_e^2
+\end{bmatrix},
+\label{eq:ke}
+\end{equation}
+agissant sur $\{w_i,\,\theta_i,\,w_j,\,\theta_j\}^{\mathrm T}$. Une charge répartie uniforme $q$ ne s'applique pas aux n\oe{}uds n'importe comment : le vecteur \emph{consistant}, obtenu en intégrant $q$ contre les fonctions de forme, vaut
+\begin{equation}
+\mathbf{f}_e = \frac{qL_e}{12}\,
+\begin{Bmatrix} 6 \\ L_e \\ 6 \\ -L_e \end{Bmatrix},
+\label{eq:fe}
+\end{equation}
+soit une force $qL_e/2$ \emph{et un moment} $\pm qL_e^2/12$ à chaque n\oe{}ud. L'assemblage, l'imposition des conditions aux limites et la récupération des réactions suivent exactement le TP~1.2 ; seule change la taille des blocs ($4\times 4$, deux degrés de liberté par n\oe{}ud).
+
+\subsection{Erreur de discrétisation et taux de convergence}
+\label{sec:taux}
+Le champ exact solution de \eqref{eq:ode} sous charge répartie est un polynôme de degré quatre ; l'élément n'offre que des cubiques : la solution vraie n'habite plus l'espace d'approximation, l'erreur est inévitable. La théorie~\cite{zienkiewicz,hughes} prédit qu'en raffinant uniformément (taille d'élément $h = L/n$), l'erreur sur la courbure --- donc sur le moment et la contrainte --- décroît en $O(h^2)$ : diviser $h$ par deux divise l'erreur par quatre. Sur un diagramme log--log de l'erreur en fonction de $n$, cette loi est une droite de pente $-2$ : \emph{le taux de convergence observé est la signature qui authentifie un calcul EF}. S'il ne correspond pas au taux théorique, quelque chose est faux (intégration, conditions aux limites, charge mal répartie).
+
+Le cas unidimensionnel réserve de plus une propriété remarquable : avec le vecteur consistant \eqref{eq:fe}, les valeurs \emph{nodales} de $w$ et $\theta$ sont exactes quel que soit le maillage --- conséquence du lien entre fonctions de forme et fonction de Green du problème~\cite{tong}. Cette \emph{superconvergence} est un piège autant qu'une élégance : l'erreur se cache alors tout entière \emph{entre} les n\oe{}uds et dans les dérivées secondes, précisément là où se lit la contrainte.
+
+Enfin, connaître le taux permet de faire mieux que constater : si l'erreur suit $Ch^2$, deux calculs aux pas $h$ et $h/2$ suffisent à éliminer $C$ et à \emph{extrapoler} la valeur de convergence (extrapolation de Richardson~\cite{oberkampf}) :
+\begin{equation}
+M_{\text{extr}} = M_{h/2} + \frac{M_{h/2}-M_{h}}{3}.
+\label{eq:richardson}
+\end{equation}
+
+\subsection{Analogie avec les modèles de substitution}
+L'étude de convergence est la \emph{courbe d'apprentissage} du solveur : l'erreur en fonction de $n$ éléments joue le rôle de l'erreur d'un modèle appris en fonction du nombre de données, et la pente log--log y révèle la capacité de la famille de fonctions, ici comme là~\cite{forrester}. La superconvergence nodale a elle aussi son double : un modèle de substitution interpolant (processus gaussien, RBF) est \emph{parfait sur ses points d'entraînement} et se trompe entre eux --- évaluer le modèle là où il a été ajusté ne mesure rien. La règle d'ingénieur est la même des deux côtés : choisir la métrique sur la grandeur qui dimensionne (la contrainte, pas la flèche) et l'évaluer là où le modèle interpole, pas là où il récite.
+
+\section{Cas d'étude}
+On reprend la poutre du TP~1.1 --- profilé rectangulaire en aluminium 6061, encastré à gauche --- mais chargée par une charge répartie uniforme $q$ sur toute la portée (Fig.~\ref{fig:poutre}), représentative d'un chargement aérodynamique ou d'équipements distribués. La solution exacte reste en forme close, ce qui permet de \emph{mesurer} l'erreur EF. Les paramètres sont donnés au Tableau~\ref{tab:param} ; le maillage compte $n$ éléments égaux, soit $2(n+1)$ degrés de liberté dont deux bloqués à l'encastrement ($w_1=\theta_1=0$).
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}[>=Latex,scale=1.0]
+  % mur encastrement
+  \fill[pattern=north east lines] (-0.25,-0.55) rectangle (0,0.55);
+  \draw[thick] (0,-0.55) -- (0,0.55);
+  % poutre
+  \draw[thick,fill=black!4] (0,-0.16) rectangle (5.0,0.16);
+  % charge repartie
+  \draw[thick] (0,0.72) -- (5.0,0.72);
+  \foreach \x in {0.0,0.5,1.0,1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0}
+    \draw[->] (\x,0.72) -- (\x,0.22);
+  \node[above] at (2.5,0.78) {$q=1{,}5$~kN/m};
+  % deformee
+  \draw[red,dashed,thick] (0,0) .. controls (2.2,-0.05) and (3.9,-0.35) .. (5.0,-0.60);
+  % cote L
+  \draw[<->] (0,-0.85) -- (5.0,-0.85);
+  \node[below] at (2.5,-0.85) {$L=1{,}20$~m};
+  % modele discretise n=4
+  \begin{scope}[shift={(0,-2.35)}]
+    \fill[pattern=north east lines] (-0.3,-0.25) rectangle (-0.06,0.25);
+    \draw[thick] (-0.06,-0.25) -- (-0.06,0.25);
+    \draw[thick] (0,0) -- (5.0,0);
+    \foreach \i/\x in {1/0,2/1.25,3/2.5,4/3.75,5/5.0}{
+      \fill (\x,0) circle (2pt);
+      \node[below=2pt] at (\x,0) {\footnotesize $\i$};}
+    \node[above] at (0.625,0.05) {\footnotesize élém.~1};
+    \node[above] at (4.375,0.05) {\footnotesize élém.~$n$};
+    % dof du noeud 3
+    \draw[->,thick] (2.5,0) -- (2.5,-0.55); \node[right] at (2.55,-0.45) {\footnotesize $w_3$};
+    \draw[->,thick] (3.0,0.42) arc (65:15:0.55); \node[above] at (3.15,0.42) {\footnotesize $\theta_3$};
+    \draw[<->] (0,0.55) -- (1.25,0.55); \node[above] at (0.625,0.55) {\footnotesize $h=L/n$};
+  \end{scope}
+\end{tikzpicture}
+\caption{Poutre encastrée sous charge répartie uniforme (haut ; en pointillés rouges, la déformée) et son idéalisation en $n$ éléments de Hermite égaux (bas, $n=4$). Chaque n\oe{}ud porte deux degrés de liberté : la flèche $w_i$ et la rotation $\theta_i$.}
+\label{fig:poutre}
+\end{figure}
+
+\begin{table}[!t]
+\caption{Paramètres du cas d'étude}
+\label{tab:param}
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Grandeur & Symbole & Valeur \\
+\midrule
+Longueur & $L$ & 1,20 m \\
+Largeur de section & $b$ & 30 mm \\
+Hauteur de section & $h_s$ & 60 mm \\
+Moment quadratique & $I$ & $5{,}40\times10^{-7}$ m$^4$ \\
+Module d'Young (alu 6061) & $E$ & 69 GPa \\
+Charge répartie & $q$ & 1,5 kN/m \\
+Limite d'élasticité (6061-T6) & $\sigma_e$ & 240 MPa \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Résultats}
+\subsection{Vérité-terrain : solution exacte du continu}
+L'intégration de \eqref{eq:ode} avec $w(0)=w'(0)=0$ et extrémité libre donne les résultats classiques~\cite{gere}
+\begin{align}
+M(x) &= \frac{q\,(L-x)^2}{2}, \qquad M_{\max}=M(0)=\frac{qL^2}{2},\\
+w(L) &= \frac{qL^4}{8EI}, \qquad w'(L) = \frac{qL^3}{6EI}.
+\end{align}
+L'application numérique donne $M_{\max}=1080$~N$\cdot$m, $\sigma_{\max}=M_{\max}(h_s/2)/I=60{,}0$~MPa, soit une marge $\sigma_e/\sigma_{\max}=4{,}0$ ; la flèche en bout vaut $w(L)=10{,}4$~mm ($w/L=0{,}87\;\%$) et la rotation $w'(L)=11{,}6$~mrad. Élasticité, petites déformations et élancement ($L/h_s=20$) : les trois hypothèses d'Euler--Bernoulli du TP~1.1 sont satisfaites, la référence est légitime.
+
+\subsection{Solution EF à un élément, à la main}
+Avec $n=1$ ($L_e=L$) et $w_1=\theta_1=0$, le système réduit issu de \eqref{eq:ke}--\eqref{eq:fe} s'écrit
+\begin{equation}
+\frac{EI}{L^3}
+\begin{bmatrix} 12 & -6L \\ -6L & 4L^2 \end{bmatrix}
+\begin{Bmatrix} w_2 \\ \theta_2 \end{Bmatrix}
+=
+\begin{Bmatrix} qL/2 \\ -qL^2/12 \end{Bmatrix},
+\label{eq:reduit}
+\end{equation}
+dont la solution est
+\begin{equation}
+w_2 = \frac{qL^4}{8EI} = 10{,}4~\text{mm}, \qquad
+\theta_2 = \frac{qL^3}{6EI} = 11{,}6~\text{mrad} :
+\end{equation}
+\emph{exactement} les valeurs du continu --- la superconvergence nodale annoncée en Section~\ref{sec:taux}, alors même que la solution vraie (degré 4) n'habite pas l'espace des cubiques. Le verdict change dès qu'on lit la contrainte. Le moment EF s'obtient en dérivant deux fois l'interpolation de Hermite ; à l'encastrement, avec $w_1=\theta_1=0$,
+\begin{equation}
+M_h(0) = EI\left(\frac{6}{L_e^2}\,w_2 - \frac{2}{L_e}\,\theta_2\right)
+= \frac{5\,qL^2}{12} = 900~\text{N$\cdot$m},
+\label{eq:mh}
+\end{equation}
+au lieu de $qL^2/2=1080$~N$\cdot$m : une sous-estimation de $16{,}7\;\%$ de la contrainte qui dimensionne, produite par un calcul dont les déplacements sont \emph{parfaits}. Juger ce solveur sur $w_2$ reviendrait à noter un modèle sur ses points d'entraînement.
+
+\subsection{Loi de convergence en forme close}
+Ce cas permet un luxe rare : la loi d'erreur exacte. Les valeurs nodales étant exactes, la solution EF sur le premier élément est l'interpolant de Hermite de la solution vraie ; l'erreur d'interpolation d'un polynôme de degré 4 par une cubique vaut $e(x)=\frac{q}{24EI}\,x^2(x-h)^2$ sur $[0,h]$, d'où, en dérivant deux fois,
+\begin{equation}
+M_{\text{exact}}(0)-M_h(0) = \frac{q\,h^2}{12}
+\quad\Longrightarrow\quad
+\frac{\Delta M}{M_{\max}} = \frac{1}{6\,n^2}.
+\label{eq:loi}
+\end{equation}
+C'est la décroissance en $O(h^2)$ de la Section~\ref{sec:taux}, avec sa constante. Le Tableau~\ref{tab:conv} en déroule les valeurs : le ratio d'erreur entre deux maillages successifs vaut exactement 4, et le seuil de 1~\% est franchi pour $n=5$ ($0{,}67\;\%$). L'extrapolation de Richardson \eqref{eq:richardson} appliquée aux deux maillages les plus grossiers, $M_{\text{extr}} = 1035 + (1035-900)/3 = 1080$~N$\cdot$m, restitue ici la valeur exacte --- deux calculs médiocres bien exploités valent mieux qu'un calcul fin~\cite{oberkampf}.
+
+\begin{table}[!t]
+\caption{Convergence du moment d'encastrement}
+\label{tab:conv}
+\centering
+\begin{tabular}{@{}cccc@{}}
+\toprule
+$n$ & $M_h(0)$ (N$\cdot$m) & Erreur (\%) & Ratio \\
+\midrule
+1 & 900,00 & 16,67 & --- \\
+2 & 1035,00 & 4,17 & 4,0 \\
+4 & 1068,75 & 1,04 & 4,0 \\
+8 & 1077,19 & 0,26 & 4,0 \\
+16 & 1079,30 & 0,065 & 4,0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Vérification numérique}
+Le Listing~\ref{lst:py} fournit le squelette du solveur poutre et de l'étude de convergence ; les \texttt{TODO} sont à compléter (Annexe), et les sorties doivent reproduire le Tableau~\ref{tab:conv}. Trois pièges guettent : (i) la numérotation des degrés de liberté --- l'élément $e$ occupe les lignes $2e$ à $2e+3$, tout décalage rend $\mathbf{K}$ fausse mais inversible, donc l'erreur est \emph{silencieuse} ; (ii) l'encastrement bloque \emph{deux} degrés de liberté ($w_1$ et $\theta_1$) --- n'en bloquer qu'un laisse une rotule et une matrice singulière ; (iii) remplacer le vecteur consistant \eqref{eq:fe} par la répartition intuitive $qL_e/2$ sur chaque n\oe{}ud (charge \og concentrée\fg{}) détruit l'exactitude nodale --- l'exercice~B.2 le quantifie. La règle du TP~1.1 demeure : unités SI dès la première ligne.
+
+\begin{lstlisting}[caption={Squelette du solveur poutre de Hermite et de l'étude de convergence. Completer les TODO puis comparer au Tableau~\ref{tab:conv}.},label={lst:py},float=!t]
+import numpy as np
+# Donnees (unites SI)
+L, b, hs = 1.20, 30e-3, 60e-3
+E, q = 69e9, 1.5e3
+I = b*hs**3/12
+
+def k_elem(EI, Le):
+    # TODO: matrice de Hermite 4x4, eq. (2)
+    return np.zeros((4, 4))
+
+def f_elem(q, Le):
+    # TODO: vecteur consistant qLe/12*[6, Le, 6, -Le]
+    return np.zeros(4)
+
+def solve_poutre(n):
+    Le = L/n
+    ndof = 2*(n + 1)
+    K = np.zeros((ndof, ndof))
+    F = np.zeros(ndof)
+    for e in range(n):
+        d = [2*e, 2*e+1, 2*e+2, 2*e+3]
+        # TODO: sommer k_elem dans K aux ddl d
+        # K[np.ix_(d, d)] += k_elem(E*I, Le)
+        # TODO: sommer f_elem dans F
+    # Encastrement : w1 = theta1 = 0
+    u = np.zeros(ndof)
+    # TODO: resoudre K[2:,2:] u[2:] = F[2:]
+    # Moment a l'encastrement (element 1, w1=theta1=0)
+    w2, t2 = u[2], u[3]
+    M0 = E*I*(6/Le**2*w2 - 2/Le*t2)
+    return u[-2], M0
+
+w_ex = q*L**4/(8*E*I)
+M_ex = q*L**2/2
+for n in [1, 2, 4, 8, 16]:
+    wL, M0 = solve_poutre(n)
+    err = abs(M0 - M_ex)/M_ex*100
+    print(f"n={n:2d} w(L)={wL*1e3:.4f} mm "
+          f"M0={M0:7.2f} N.m err={err:.3f} %")
+print(f"exact: w(L)={w_ex*1e3:.4f} mm M0={M_ex:.1f} N.m")
+\end{lstlisting}
+
+\section{Convergence et domaine de validité}
+\label{sec:domaine}
+La Fig.~\ref{fig:conv} porte l'erreur du Tableau~\ref{tab:conv} sur un diagramme log--log : les points s'alignent sur la droite de pente $-2$, signature du taux théorique. Ce diagramme est le \emph{certificat de vérification} du solveur : il prouve que le code résout correctement les équations qu'on lui a données. Il ne prouve rien d'autre --- et c'est la frontière la plus importante du TP. Que vérifie-t-on, en effet ? La convergence vers la solution \emph{d'Euler--Bernoulli}. Si la poutre était trapue ($L/h_s=4$, hors du domaine établi au TP~1.1), le solveur convergerait avec la même pente $-2$, le même alignement impeccable, vers une flèche fausse de plusieurs pour cent, cisaillement oublié. La littérature nomme cette distinction \emph{vérification} (résoudre les équations correctement) contre \emph{validation} (résoudre les bonnes équations)~\cite{oberkampf} ; un maillage convergé n'a jamais validé une physique. L'analogie avec l'apprentissage automatique est frappante : une erreur de validation croisée exemplaire certifie le modèle \emph{sur la distribution de ses données}, et ne dit rien de son comportement hors distribution~\cite{forrester}. Convergence en maillage et validation croisée sont des instruments de confiance indispensables --- et tous deux muets sur le domaine de validité, qui reste l'affaire de l'ingénieur.
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=0.66\columnwidth,
+  xlabel={nombre d'éléments $n$}, ylabel={erreur sur $M(0)$ (\%)},
+  xmode=log, ymode=log,
+  xmin=0.8, xmax=22, ymin=0.03, ymax=50,
+  xtick={1,2,4,8,16}, xticklabels={1,2,4,8,16},
+  ytick={0.1,1,10}, yticklabels={$0{,}1$,$1$,$10$},
+  tick label style={font=\footnotesize}, label style={font=\footnotesize},
+  axis lines=left, clip=false]
+  % seuil 1%
+  \draw[dashed,red!70!black] (axis cs:0.8,1) -- (axis cs:22,1);
+  \node[red!70!black,font=\scriptsize,anchor=south west] at (axis cs:0.9,1.05) {seuil $1~\%$};
+  % loi exacte 100/(6 n^2)
+  \addplot[thick,blue,domain=1:16,samples=40]{100/(6*x^2)};
+  \addplot[only marks,mark=*,mark size=1.6pt,blue] coordinates
+    {(1,16.67) (2,4.167) (4,1.042) (8,0.2604) (16,0.0651)};
+  \node[blue,font=\scriptsize,anchor=south west] at (axis cs:4.4,1.1) {$\Delta M/M = 1/(6n^2)$};
+  % triangle pente -2
+  \draw[black!60] (axis cs:6,0.9) -- (axis cs:12,0.9) -- (axis cs:12,0.225) -- cycle;
+  \node[black!60,font=\scriptsize,anchor=west] at (axis cs:12.3,0.45) {pente $-2$};
+\end{axis}
+\end{tikzpicture}
+\caption{Erreur sur le moment d'encastrement en fonction du nombre d'éléments (log--log). Les points EF suivent exactement la loi \eqref{eq:loi} de pente $-2$. Les déplacements nodaux, eux, sont exacts pour tout $n$ (superconvergence) et n'apparaissent donc pas sur ce diagramme.}
+\label{fig:conv}
+\end{figure}
+
+\section{Conclusion}
+L'élément de Hermite étend le squelette du TP~1.2 à la flexion : deux degrés de liberté par n\oe{}ud, une rigidité $4\times 4$, un vecteur de charges consistant. Sur la poutre encastrée sous charge répartie, il livre des déplacements nodaux exacts dès un élément mais un moment d'encastrement faux de 16,7~\% --- preuve qu'un modèle se juge sur la grandeur qui dimensionne, évaluée là où il interpole. L'étude de convergence transforme ce constat en méthode : l'erreur décroît en $h^2$ suivant la loi exacte \eqref{eq:loi}, la pente $-2$ authentifie le calcul, l'extrapolation de Richardson en extrait la limite, et le seuil de 1~\% fixe le maillage nécessaire ($n\ge 5$). Reste la leçon d'ingénieur : ce certificat est une \emph{vérification}, pas une \emph{validation} --- converger n'est pas avoir raison. Le TP~1.4 exploitera ce solveur désormais digne de confiance comme générateur de vérité-terrain pour entraîner un premier modèle de substitution.
+
+\appendices
+\section*{Annexe --- Exercices guidés}
+Les exercices reprennent la démarche du TP ; les calculs se font à la main puis se vérifient avec le Listing~\ref{lst:py}.
+
+\subsection{Calcul à la main}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Vérité-terrain.} Calculer $M_{\max}=qL^2/2$, $\sigma_{\max}$, la marge $\sigma_e/\sigma_{\max}$, $w(L)=qL^4/8EI$ et $w'(L)=qL^3/6EI$ ; vérifier les trois hypothèses d'Euler--Bernoulli comme au TP~1.1.
+\item \emph{Un élément.} Écrire le système réduit \eqref{eq:reduit} à partir de \eqref{eq:ke}--\eqref{eq:fe}, le résoudre à la main et constater que $w_2$ et $\theta_2$ sont exacts. Pourquoi le vecteur consistant \eqref{eq:fe} comporte-t-il des moments nodaux ?
+\item \emph{Moment d'encastrement.} Retrouver \eqref{eq:mh} et l'erreur de $16{,}7\;\%$. Où, dans l'élément, l'erreur de flèche est-elle maximale, sachant que $e(x)\propto x^2(x-h)^2$ ?
+\item \emph{Prédiction.} Sans aucun calcul EF, prédire l'erreur pour $n=2$ et $n=4$ à partir de \eqref{eq:loi}, puis le premier $n$ passant sous 1~\%. Vérifier au Tableau~\ref{tab:conv}.
+\end{enumerate}
+
+\subsection{Vérification numérique}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Complétion.} Compléter les \texttt{TODO} du Listing~\ref{lst:py} et reproduire le Tableau~\ref{tab:conv} : ratio d'erreur de 4 entre maillages successifs et $w(L)$ exact pour tout $n$. Tracer le diagramme log--log et mesurer la pente par régression sur $\log(\text{err})$ vs $\log n$.
+\item \emph{Charge concentrée aux n\oe{}uds.} Remplacer \eqref{eq:fe} par $\mathbf{f}_e=qL_e/2\,\{1,0,1,0\}^{\mathrm T}$. Les valeurs nodales restent-elles exactes ? Mesurer le nouveau taux de convergence de $w(L)$ et de $M_h(0)$, et conclure sur le prix d'une répartition de charge \og intuitive\fg{}.
+\item \emph{Richardson.} À partir des seuls calculs $n=1$ et $n=2$, appliquer \eqref{eq:richardson} et comparer à $M_{\max}$. Recommencer avec $n=2$ et $n=4$. Pourquoi l'extrapolation est-elle ici \emph{exacte}, et pourquoi ne le serait-elle qu'approximativement sur un problème général ?
+\end{enumerate}
+
+\subsection{Synthèse}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Note d'ingénieur (5 lignes).} Répondre à : \og Mon maillage est-il assez fin, et qu'est-ce que cela ne prouve pas ?\fg{} en citant le taux de convergence observé, le seuil d'erreur choisi, la grandeur sur laquelle il est mesuré, et la distinction vérification/validation appliquée à une poutre trapue.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{logan} D.~L. Logan, \emph{A First Course in the Finite Element Method}, 6th ed. Boston, MA, USA: Cengage, 2017.
+\bibitem{zienkiewicz} O.~C. Zienkiewicz, R.~L. Taylor, and J.~Z. Zhu, \emph{The Finite Element Method: Its Basis and Fundamentals}, 7th ed. Oxford, U.K.: Butterworth-Heinemann, 2013.
+\bibitem{hughes} T.~J.~R. Hughes, \emph{The Finite Element Method: Linear Static and Dynamic Finite Element Analysis}. Mineola, NY, USA: Dover, 2000.
+\bibitem{gere} J.~M. Gere and B.~J. Goodno, \emph{Mechanics of Materials}, 9th ed. Boston, MA, USA: Cengage, 2018.
+\bibitem{tong} P.~Tong, ``Exact solution of certain problems by finite-element method,'' \emph{AIAA J.}, vol.~7, no.~1, pp.~178--180, 1969.
+\bibitem{oberkampf} W.~L. Oberkampf and C.~J. Roy, \emph{Verification and Validation in Scientific Computing}. Cambridge, U.K.: Cambridge Univ. Press, 2010.
+\bibitem{forrester} A.~I.~J. Forrester, A.~Sóbester, and A.~J. Keane, \emph{Engineering Design via Surrogate Modelling}. Chichester, U.K.: Wiley, 2008.
+\end{thebibliography}
+
+\end{document}
