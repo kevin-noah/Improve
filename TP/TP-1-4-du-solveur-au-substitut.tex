@@ -1,0 +1,291 @@
+\documentclass[10pt,journal]{IEEEtran}
+\input{_preamble}
+
+\begin{document}
+
+\title{Du solveur au substitut : première régression sur une vérité-terrain mécanique et protocole d'évaluation honnête}
+
+\author{Prénom~Nom%
+\thanks{Profil hybride mécanique + IA --- Parcours Simulation + IA, Étage~1, TP~1.4. Courriel~: prenom.nom@exemple.org}}
+
+\markboth{\improvejournal}{Nom \MakeLowercase{\textit{et~al.}}: Du solveur au substitut --- régression et évaluation honnête}
+
+\maketitle
+
+\begin{abstract}
+Les TP~1.1 à 1.3 ont bâti une vérité-terrain mécanique et son solveur ; cet article construit le premier \emph{modèle de substitution} du parcours et, surtout, le protocole qui permet de le juger. La fonction cible est la flèche du cantilever du TP~1.1 vue comme fonction de la hauteur de section, $w = 4PL^3/(Ebh^3)$ : une physique en $1/h^3$, connue en forme close, si bien que chaque erreur du substitut est \emph{mesurée} et non estimée. Trois familles de modèles sont entraînées par moindres carrés sur trois sorties du \og solveur\fg{} : la droite sous-apprend (35~\% d'erreur), la parabole passe exactement par ses points d'entraînement mais se trompe de 14 à 23~\% entre eux et de $+660$~\% en extrapolation --- jusqu'à prédire qu'épaissir la poutre l'assouplit --- tandis que le modèle doté de la caractéristique physique $1/h^3$ est exact partout avec un seul coefficient. On en tire les trois règles de l'évaluation honnête : ne jamais juger un modèle sur ses points d'entraînement, mesurer l'erreur sur des points retenus, et déclarer le domaine couvert --- hors duquel toute prédiction redevient une hypothèse.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Modèle de substitution, régression par moindres carrés, plan d'expériences, évaluation honnête, points retenus, extrapolation, ingénierie de caractéristiques, vérité-terrain.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+\section{Introduction}
+\IEEEPARstart{U}{n} solveur par éléments finis industriel se paie en heures de calcul par évaluation ; une boucle d'optimisation ou une étude de fiabilité en réclame des milliers. Le modèle de substitution (\emph{surrogate}) répond à cette impasse : on échantillonne le solveur en quelques points bien choisis, on ajuste sur ces données une fonction rapide à évaluer, et c'est elle qui tourne dans la boucle~\cite{forrester}, \cite{sacks}. Tout l'enjeu tient alors en une question --- celle du TP~1.1 : \emph{ai-je le droit de croire ce substitut ?}
+
+Pour y répondre sans angle mort, ce TP choisit une cible dont la vérité est connue partout : la flèche du cantilever du TP~1.1, vue comme fonction de la hauteur de section $h$. On \emph{joue} la situation industrielle --- quelques évaluations coûteuses, un ajustement, des prédictions --- mais chaque prédiction peut être confrontée à la forme close, si bien que les succès et les mensonges du substitut sont exactement quantifiables. La leçon centrale prolonge la superconvergence nodale du TP~1.3 : un modèle peut être parfait \emph{sur ses points d'entraînement} et faux partout ailleurs ; seule une évaluation sur des points retenus, dans un domaine déclaré, mesure quelque chose~\cite{hastie}.
+
+\section{Théorie}
+\subsection{Le substitut : coût hors-ligne, service en ligne}
+Soit $f$ la réponse d'un code de calcul (ici la flèche $w$) en fonction de variables de conception $x$ (ici $h$). La démarche de substitution comporte trois temps : (i)~un plan d'expériences choisit $n$ sites $x_1,\dots,x_n$ et le code fournit $y_i = f(x_i)$ --- la phase \emph{hors-ligne}, coûteuse ; (ii)~une famille paramétrée $\hat f_\theta$ est ajustée sur ces couples ; (iii)~le substitut $\hat f_\theta$ sert \emph{en ligne}, pour un coût d'évaluation négligeable~\cite{forrester}. La famille choisie ici est linéaire en ses paramètres,
+\begin{equation}
+\hat f_\theta(x) = \sum_{k=0}^{m} \theta_k\,\phi_k(x),
+\label{eq:famille}
+\end{equation}
+où les $\phi_k$ sont des \emph{caractéristiques} (monômes, ou toute fonction jugée pertinente). Le choix des $\phi_k$ est une décision de modélisation au même titre qu'un choix d'élément fini : c'est lui qui fixe l'espace dans lequel le substitut cherchera la physique.
+
+\subsection{Ajustement par moindres carrés}
+Avec la matrice $\mathbf{X}$ de terme général $X_{ik}=\phi_k(x_i)$ et le vecteur des observations $\mathbf{y}$, les moindres carrés minimisent $\lVert\mathbf{y}-\mathbf{X}\boldsymbol\theta\rVert^2$, dont le minimum est donné par les équations normales~\cite{hastie}
+\begin{equation}
+\mathbf{X}^{\mathrm T}\mathbf{X}\,\boldsymbol\theta = \mathbf{X}^{\mathrm T}\mathbf{y}.
+\label{eq:normales}
+\end{equation}
+Pour un ajustement polynomial, on travaille sur la variable centrée réduite
+\begin{equation}
+\xi = \frac{h - h_0}{\Delta h},
+\label{eq:xi}
+\end{equation}
+qui évite les matrices mal conditionnées et simplifie les calculs à la main : sur le plan symétrique $\xi\in\{-1,0,1\}$, les équations normales de la droite $\hat w = a_0 + a_1\xi$ se découplent en
+\begin{equation}
+a_0 = \frac{y_1+y_2+y_3}{3}, \qquad a_1 = \frac{y_3-y_1}{2},
+\label{eq:droite}
+\end{equation}
+et la parabole à trois coefficients \emph{interpole} exactement les trois points --- son erreur d'entraînement est nulle par construction, comme l'était la flèche nodale du TP~1.3. Première alarme : ce zéro ne mesure rien.
+
+\subsection{Évaluation honnête : points retenus, métriques, domaine}
+\label{sec:honnete}
+Le protocole tient en trois règles. \emph{Un}, séparer les données : les sites d'entraînement servent à ajuster $\boldsymbol\theta$, des sites \emph{retenus} (jamais vus par \eqref{eq:normales}) servent à mesurer l'erreur de généralisation~\cite{hastie}. \emph{Deux}, chiffrer avec des métriques explicites : l'erreur quadratique moyenne et l'erreur relative maximale,
+\begin{equation}
+\mathrm{RMSE} = \sqrt{\tfrac{1}{n_v}\textstyle\sum_i\big(\hat f(x_i)-y_i\big)^2},
+\quad
+e_{\max} = \max_i \frac{|\hat f(x_i)-y_i|}{|y_i|},
+\label{eq:metriques}
+\end{equation}
+la seconde étant celle qui parle au dimensionnement. \emph{Trois}, déclarer le domaine : les métriques ne valent qu'\emph{entre} les sites d'entraînement (interpolation) ; au-delà de leur enveloppe, le substitut extrapole et ses métriques ne promettent plus rien --- c'est le domaine de validité du TP~1.1, version apprise. Enfin, vérifier n'est pas valider~\cite{oberkampf} : un substitut fidèle au solveur hérite des limites \emph{du solveur} (ici, Euler--Bernoulli exige toujours $L/h\gtrsim 10$) ; aucune métrique de régression ne détecte un modèle physique faux.
+
+\subsection{Analogie avec les modèles de substitution}
+L'analogie filée depuis le TP~1.1 devient ici l'objet même du TP, et le dictionnaire se referme terme à terme : l'espace d'approximation de l'élément (TP~1.2) correspond à la famille $\{\phi_k\}$ de \eqref{eq:famille} ; raffiner le maillage correspond à ajouter des sites d'entraînement ; l'étude de convergence (TP~1.3) devient la courbe d'apprentissage, erreur retenue contre taille du plan ; et le domaine de validité devient l'enveloppe des données. La réciproque est la plus utile : tout réflexe acquis sur les EF a son double en apprentissage automatique, et un ingénieur qui exige une étude de convergence avant de croire un maillage doit exiger une évaluation sur points retenus avant de croire un substitut --- c'est le même geste professionnel~\cite{forrester}.
+
+\section{Cas d'étude}
+La fonction cible est la flèche en bout du cantilever du TP~1.1 ($P$, $L$, $b$, $E$ fixés), dont on fait varier la hauteur de section $h$ --- le levier de conception typique d'un dimensionnement en raideur. La forme close issue du TP~1.1~\cite{gere},
+\begin{equation}
+w(h) = \frac{PL^3}{3EI} = \frac{4PL^3}{E\,b\,h^3},
+\label{eq:cible}
+\end{equation}
+joue le rôle du solveur coûteux : elle n'est évaluée qu'aux sites du plan, puis sert de juge partout. Le scénario (Fig.~\ref{fig:pipeline}, Tableau~\ref{tab:param}) : un plan d'entraînement de trois sites $h\in\{40,60,80\}$~mm (soit $\xi\in\{-1,0,1\}$ avec $h_0=60$~mm, $\Delta h = 20$~mm), deux sites retenus $h\in\{50,70\}$~mm pour l'évaluation honnête, et une demande d'extrapolation à $h=100$~mm. Trois familles concourent : la droite en $\xi$, la parabole en $\xi$, et le modèle \og physique\fg{} à un seul coefficient $\hat w = \theta/h^3$, dont la caractéristique vient de \eqref{eq:cible}. Sur tout l'intervalle, l'élancement reste $L/h \ge 12$ : la cible elle-même est dans son domaine.
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}[>=Latex,
+  bloc/.style={draw,thick,rounded corners=2pt,align=center,font=\footnotesize,
+               inner sep=4pt,fill=black!4},
+  etiq/.style={font=\scriptsize,align=center}]
+  \node[bloc] (truth) at (0,0) {Modèle physique \eqref{eq:cible}\\(solveur \og coûteux\fg{}, TP~1.1--1.3)};
+  \node[bloc] (data) at (0,-1.45) {Plan d'entraînement\\$(h_i,\,w_i)$, $h\in\{40,60,80\}$~mm};
+  \node[bloc] (fit) at (0,-2.9) {Moindres carrés \eqref{eq:normales}\\$\hat w(\xi)$ ou $\hat w=\theta/h^3$};
+  \node[bloc] (test) at (0,-4.35) {Évaluation sur points retenus\\$h\in\{50,70\}$~mm : RMSE, $e_{\max}$};
+  \node[bloc,fill=red!6] (dom) at (0,-5.8) {Domaine déclaré : $40 \le h \le 80$~mm\\au-delà : extrapolation};
+  \draw[->,thick] (truth) -- (data) node[midway,right,etiq] {échantillonnage (hors-ligne)};
+  \draw[->,thick] (data) -- (fit) node[midway,right,etiq] {entraînement};
+  \draw[->,thick] (fit) -- (test) node[midway,right,etiq] {jamais sur l'entraînement};
+  \draw[->,thick] (test) -- (dom) node[midway,right,etiq] {verdict + frontière};
+  \draw[->,thick,dashed] (truth.east) .. controls (3.55,-1.5) and (3.55,-3.0) .. (test.east)
+    node[pos=0.5,right,etiq,red!70!black] {vérité-terrain :\\ici seulement,\\l'erreur vraie\\est mesurable};
+\end{tikzpicture}
+\caption{Chaîne de substitution jouée dans ce TP. Dans un cas industriel, la flèche en pointillés n'existe pas : l'erreur vraie est inaccessible, et le protocole d'évaluation (points retenus, domaine déclaré) est tout ce qui reste.}
+\label{fig:pipeline}
+\end{figure}
+
+\begin{table}[!t]
+\caption{Paramètres du cas d'étude}
+\label{tab:param}
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Grandeur & Symbole & Valeur \\
+\midrule
+Force en bout & $P$ & 800 N \\
+Longueur & $L$ & 1,20 m \\
+Largeur de section & $b$ & 30 mm \\
+Module d'Young (alu 6061) & $E$ & 69 GPa \\
+Plan d'entraînement & $h$ & $\{40,\,60,\,80\}$ mm \\
+Points retenus & $h$ & $\{50,\,70\}$ mm \\
+Demande d'extrapolation & $h$ & 100 mm \\
+Centrage--réduction \eqref{eq:xi} & $h_0$, $\Delta h$ & 60 mm, 20 mm \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Résultats}
+\subsection{Entraînement à la main}
+L'évaluation de \eqref{eq:cible} aux trois sites d'entraînement donne, avec $4PL^3/(Eb) = 2{,}671\times10^{-6}$~m$^4$ : $w(40) = 41{,}74$~mm, $w(60) = 12{,}37$~mm (le cas du TP~1.1 retrouvé) et $w(80) = 5{,}22$~mm. Les formules découplées \eqref{eq:droite} livrent la droite
+\begin{equation}
+\hat w_1(\xi) = 19{,}78 - 18{,}26\,\xi \quad \text{(mm)},
+\label{eq:fit1}
+\end{equation}
+et l'interpolation des trois points, la parabole
+\begin{equation}
+\hat w_2(\xi) = 12{,}37 - 18{,}26\,\xi + 11{,}11\,\xi^2 \quad \text{(mm)}.
+\label{eq:fit2}
+\end{equation}
+Le modèle physique s'ajuste d'un seul point : $\theta = w(60)\cdot(60~\text{mm})^3 = 2{,}671\times10^{-6}$~m$^4$ --- il retrouve la constante de \eqref{eq:cible}, car sa famille \emph{contient} la vraie fonction.
+
+\subsection{Verdicts sur les points retenus}
+Sur l'entraînement, la droite affiche déjà une RMSE de 5,24~mm ($+60$~\% au centre) : elle sous-apprend, la physique en $1/h^3$ n'est pas dans sa famille. La parabole y est parfaite --- RMSE nulle --- et c'est précisément pourquoi il faut les points retenus : en $h=50$ et $70$~mm, elle prédit 24,28 et 6,01~mm contre 21,37 et 7,79~mm vrais, soit $+13{,}6$~\% et $-22{,}8$~\% d'erreur ($\mathrm{RMSE}=2{,}41$~mm). Honnêtement évaluée, la parabole n'est pas un substitut de dimensionnement ; jugée sur son entraînement, elle semblait exacte. Le modèle physique, lui, est exact partout --- y compris hors du plan --- avec un coefficient au lieu de trois. Le Tableau~\ref{tab:res} récapitule ; l'extrapolation, elle, relève de la section suivante.
+
+\begin{table}[!t]
+\caption{Erreurs mesurées des trois substituts (flèche en mm)}
+\label{tab:res}
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+ & Droite \eqref{eq:fit1} & Parabole \eqref{eq:fit2} & $\theta/h^3$ \\
+\midrule
+RMSE entraînement & 5,24 & 0 & 0 \\
+RMSE points retenus & 5,70 & 2,41 & 0 \\
+$e_{\max}$ retenus & 36,7 \% & 22,8 \% & 0 \\
+Erreur à $h=100$ mm & absurde$^{\dagger}$ & $+660$ \% & 0 \\
+Nombre de coefficients & 2 & 3 & 1 \\
+\bottomrule
+\multicolumn{4}{@{}l@{}}{\footnotesize $^{\dagger}$La droite prédit $-16{,}8$ mm : une flèche négative sous charge}\\
+\multicolumn{4}{@{}l@{}}{\footnotesize positive, physiquement absurde.}
+\end{tabular}
+\end{table}
+
+\section{Vérification numérique}
+Le Listing~\ref{lst:py} rejoue toute la chaîne en \texttt{numpy} : évaluation du \og solveur\fg{} aux sites du plan, assemblage de la matrice des caractéristiques, équations normales, puis métriques \eqref{eq:metriques} séparées entraînement/retenus et prédiction à $h=100$~mm. Une fois les \texttt{TODO} complétés, les sorties doivent reproduire le Tableau~\ref{tab:res} à mieux que 1~\%. Deux pièges guettent. D'abord la fuite de données : glisser les points retenus dans l'ajustement --- une seule ligne fautive --- rend toutes les métriques flatteuses et invalides ; le test d'intégrité est de vérifier que la parabole garde une RMSE d'entraînement nulle et une RMSE retenue \emph{non} nulle. Ensuite le conditionnement : ajuster les polynômes directement en $h$ (en millimètres) au lieu de $\xi$ dégrade $\mathbf{X}^{\mathrm T}\mathbf{X}$ au point de perdre plusieurs chiffres significatifs --- centrer--réduire \eqref{eq:xi} est l'équivalent, côté données, de la conversion SI du TP~1.1.
+
+\begin{lstlisting}[caption={Chaine complete : echantillonnage, moindres carres, evaluation honnete. Completer les TODO puis comparer au Tableau~\ref{tab:res}.},label={lst:py},float=!t]
+import numpy as np
+# Donnees (unites SI)
+P, L, b, E = 800.0, 1.20, 30e-3, 69e9
+c = 4*P*L**3/(E*b)
+def solveur(h):          # verite-terrain (TP 1.1)
+    return c/h**3
+
+h_tr = np.array([40e-3, 60e-3, 80e-3])
+h_te = np.array([50e-3, 70e-3])
+y_tr, y_te = solveur(h_tr), solveur(h_te)
+xi_tr = (h_tr - 60e-3)/20e-3
+xi_te = (h_te - 60e-3)/20e-3
+
+def ajuste(Phi, y):
+    # TODO: resoudre les equations normales, eq. (2)
+    # return np.linalg.solve(Phi.T@Phi, Phi.T@y)
+    return np.zeros(Phi.shape[1])
+
+def phi_poly(xi, deg):
+    return np.vander(xi, deg + 1, increasing=True)
+
+def phi_phys(h):
+    # TODO: caracteristique physique 1/h**3
+    return np.ones((len(h), 1))
+
+def rmse(yhat, y):
+    # TODO: eq. (5)
+    return 0.0
+
+for nom, Ptr, Pte in [
+    ("droite",   phi_poly(xi_tr,1), phi_poly(xi_te,1)),
+    ("parabole", phi_poly(xi_tr,2), phi_poly(xi_te,2)),
+    ("physique", phi_phys(h_tr),    phi_phys(h_te))]:
+    th = ajuste(Ptr, y_tr)
+    e_tr = rmse(Ptr@th, y_tr)
+    e_te = rmse(Pte@th, y_te)
+    emax = np.max(np.abs(Pte@th - y_te)/y_te)
+    print(f"{nom:9s} RMSE_tr={e_tr*1e3:6.2f} mm "
+          f"RMSE_te={e_te*1e3:5.2f} mm "
+          f"emax={emax*100:5.1f} %")
+# Extrapolation h = 100 mm (xi = 2) : a tester
+# TODO: comparer les 3 predictions a solveur(0.100)
+\end{lstlisting}
+
+\section{Domaine de validité}
+La Fig.~\ref{fig:domaine} confronte les trois substituts à la vérité \eqref{eq:cible} sur $h\in[35,105]$~mm. À l'intérieur de l'enveloppe d'entraînement $[40,80]$~mm, la parabole serpente autour de la vraie courbe --- juste aux n\oe{}uds du plan, fausse entre eux, exactement comme la déformée EF du TP~1.3 entre ses n\oe{}uds. Au-delà de $h=80$~mm, elle décroche sans aucun signal interne : sa branche remonte et prédit à $h=100$~mm une poutre plus souple qu'à 80~mm --- épaissir assouplirait --- soit $+660$~\% d'erreur avec une allure parfaitement plausible pour qui ne connaît pas la mécanique --- tous les modèles sont faux, mais celui-ci ne sait pas où~\cite{box}. La droite fait pire (flèche négative). Le modèle physique reste exact, y compris en extrapolation : quand la famille contient la vraie fonction, le domaine de validité devient illimité --- c'est l'argument décisif pour injecter la physique dans les caractéristiques plutôt que d'empiler des coefficients~\cite{forrester}. En pratique industrielle, la vraie courbe n'existe pas pour trancher : la seule frontière opposable est l'enveloppe des données, et toute sortie de cette enveloppe doit être traitée comme une hypothèse à vérifier par un appel au solveur --- le garde-fou que le TP~1.5 automatisera.
+
+\begin{figure}[!t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=0.72\columnwidth,
+  xlabel={hauteur de section $h$ (mm)}, ylabel={flèche $w$ (mm)},
+  xmin=35, xmax=105, ymin=-5, ymax=45,
+  xtick={40,50,60,70,80,90,100}, ytick={0,10,20,30,40},
+  tick label style={font=\footnotesize}, label style={font=\footnotesize},
+  legend style={font=\scriptsize, at={(0.52,0.97)}, anchor=north, draw=black!30},
+  axis lines=left]
+  % zone extrapolation
+  \fill[red!8] (axis cs:80,-5) rectangle (axis cs:105,45);
+  \fill[red!8] (axis cs:35,-5) rectangle (axis cs:40,45);
+  \draw[dashed,red!70!black] (axis cs:80,-5) -- (axis cs:80,45);
+  \draw[dashed,red!70!black] (axis cs:40,-5) -- (axis cs:40,45);
+  \node[red!70!black,font=\scriptsize,align=center] at (axis cs:92.5,41) {extrapolation};
+  % verite
+  \addplot[very thick,black,domain=36:105,samples=120]{2671300/x^3};
+  \addlegendentry{vérité \eqref{eq:cible}}
+  % parabole
+  \addplot[thick,blue,domain=36:105,samples=120]
+    {12.367 - 18.261*((x-60)/20) + 11.111*((x-60)/20)^2};
+  \addlegendentry{parabole \eqref{eq:fit2}}
+  % droite
+  \addplot[thick,black!55,dash dot,domain=36:105,samples=2]
+    {19.775 - 18.261*((x-60)/20)};
+  \addlegendentry{droite \eqref{eq:fit1}}
+  % points d'entrainement et retenus
+  \addplot[only marks,mark=*,mark size=1.8pt] coordinates
+    {(40,41.739) (60,12.367) (80,5.217)};
+  \addlegendentry{entraînement}
+  \addplot[only marks,mark=square*,mark size=1.7pt,red!70!black] coordinates
+    {(50,21.370) (70,7.788)};
+  \addlegendentry{points retenus}
+  % prediction absurde
+  \fill[blue] (axis cs:100,20.289) circle (1.6pt);
+  \draw[->,blue,thin] (axis cs:97,27) -- (axis cs:99.6,21.3);
+  \node[blue,font=\scriptsize,align=center] at (axis cs:93,30) {$+660~\%$};
+\end{axis}
+\end{tikzpicture}
+\caption{Les trois substituts face à la vérité $w=4PL^3/(Ebh^3)$ (le modèle physique $\theta/h^3$ est confondu avec elle). La parabole, exacte sur ses trois points d'entraînement, se trompe entre eux et diverge hors de l'enveloppe des données (zones rouges) --- jusqu'à inverser le sens physique : dès $h\approx 76$~mm, elle prédit qu'épaissir la poutre augmente la flèche.}
+\label{fig:domaine}
+\end{figure}
+
+\section{Conclusion}
+Le premier substitut du parcours tient ses promesses et révèle ses pièges en trois verdicts chiffrés : une famille trop pauvre sous-apprend (droite, 35~\% d'erreur), une famille assez riche pour interpoler ment sur son entraînement (parabole : 0~\% affiché, 23~\% réel, $+660$~\% en extrapolation), et une caractéristique physique bien choisie vaut mieux que des coefficients supplémentaires ($\theta/h^3$ : exact partout, un seul paramètre). Le protocole qui distingue ces trois situations --- points retenus, métriques \eqref{eq:metriques}, domaine déclaré --- est l'exact homologue de l'étude de convergence du TP~1.3, et constitue le c\oe{}ur du métier visé : non pas entraîner des modèles, mais savoir lesquels croire, où, et le prouver. Reste une faiblesse : ici, c'est l'ingénieur qui a tracé la frontière à la main. Le TP~1.5 construira le garde-fou qui la détecte seul --- signaler, en production, qu'une requête sort du domaine d'entraînement avant que le substitut ne réponde.
+
+\appendices
+\section*{Annexe --- Exercices guidés}
+Les exercices reprennent la démarche du TP ; les calculs se font à la main puis se vérifient avec le Listing~\ref{lst:py}.
+
+\subsection{Calcul à la main}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Échantillonnage.} Évaluer \eqref{eq:cible} en $h\in\{40,60,80\}$~mm après conversion SI ; retrouver 41,74, 12,37 et 5,22~mm, et vérifier que $w(60)$ coïncide avec le TP~1.1.
+\item \emph{Droite.} Établir les formules découplées \eqref{eq:droite} à partir des équations normales \eqref{eq:normales} sur le plan $\xi\in\{-1,0,1\}$ (calculer $\mathbf{X}^{\mathrm T}\mathbf{X}$ et constater qu'elle est diagonale), puis retrouver \eqref{eq:fit1}.
+\item \emph{Parabole.} Déterminer les coefficients de \eqref{eq:fit2} (l'interpolation donne $a_0 = y_2$, $a_1 = (y_3-y_1)/2$, $a_2 = (y_1+y_3-2y_2)/2$) et vérifier qu'elle passe par les trois points.
+\item \emph{Verdict retenu.} Prédire $\hat w_2$ en $h=50$ et 70~mm ($\xi=\mp 0{,}5$), comparer aux valeurs vraies et retrouver $+13{,}6$~\% et $-22{,}8$~\%. Pourquoi la RMSE d'entraînement nulle n'annonçait-elle rien de tout cela ?
+\item \emph{Modèle physique.} Ajuster $\theta$ de $\hat w = \theta/h^3$ sur le seul point $h=60$~mm et vérifier qu'il reproduit \emph{tous} les autres points. Quelle propriété de la famille \eqref{eq:famille} ce succès illustre-t-il (TP~1.2) ?
+\end{enumerate}
+
+\subsection{Vérification numérique}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Complétion.} Compléter les \texttt{TODO} du Listing~\ref{lst:py} et reproduire le Tableau~\ref{tab:res}. Tester ensuite la fuite de données : ajouter volontairement les points retenus à l'entraînement de la parabole et observer ce que deviennent les deux RMSE --- lequel des deux chiffres devient mensonger ?
+\item \emph{Extrapolation.} Évaluer les trois substituts en $h=100$~mm et comparer à $w=2{,}67$~mm. Tracer la Fig.~\ref{fig:domaine} et localiser le point où la parabole cesse d'être monotone : que vaudrait une optimisation de masse qui explorerait cette zone ?
+\item \emph{Courbe d'apprentissage.} Enrichir le plan ($n = 3, 5, 9$ sites équirépartis sur $[40,80]$~mm, points retenus intercalés) et tracer la RMSE retenue de la parabole contre $n$. Comparer à l'étude de convergence du TP~1.3 : qu'est-ce qui joue le rôle de $h$ (taille d'élément), et la décroissance peut-elle rattraper le modèle physique ?
+\item \emph{Conditionnement.} Refaire l'ajustement de la parabole directement en $h$ exprimé en millimètres (sans centrage--réduction) et afficher le conditionnement de $\mathbf{X}^{\mathrm T}\mathbf{X}$ (\texttt{np.linalg.cond}) dans les deux cas. Conclure.
+\end{enumerate}
+
+\subsection{Synthèse}
+\begin{enumerate}[leftmargin=1.4em]
+\item \emph{Note d'ingénieur (5 lignes).} Répondre à : \og Ce substitut peut-il remplacer le solveur dans la boucle de conception, et sur quel domaine ?\fg{} en citant la RMSE sur points retenus, $e_{\max}$, l'enveloppe d'entraînement et la conduite à tenir pour une requête hors domaine.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{forrester} A.~I.~J. Forrester, A.~Sóbester, and A.~J. Keane, \emph{Engineering Design via Surrogate Modelling}. Chichester, U.K.: Wiley, 2008.
+\bibitem{sacks} J.~Sacks, W.~J. Welch, T.~J. Mitchell, and H.~P. Wynn, ``Design and analysis of computer experiments,'' \emph{Statist. Sci.}, vol.~4, no.~4, pp.~409--423, 1989.
+\bibitem{hastie} T.~Hastie, R.~Tibshirani, and J.~Friedman, \emph{The Elements of Statistical Learning: Data Mining, Inference, and Prediction}, 2nd ed. New York, NY, USA: Springer, 2009.
+\bibitem{oberkampf} W.~L. Oberkampf and C.~J. Roy, \emph{Verification and Validation in Scientific Computing}. Cambridge, U.K.: Cambridge Univ. Press, 2010.
+\bibitem{gere} J.~M. Gere and B.~J. Goodno, \emph{Mechanics of Materials}, 9th ed. Boston, MA, USA: Cengage, 2018.
+\bibitem{box} G.~E.~P. Box, ``Science and statistics,'' \emph{J. Amer. Statist. Assoc.}, vol.~71, no.~356, pp.~791--799, 1976.
+\end{thebibliography}
+
+\end{document}
